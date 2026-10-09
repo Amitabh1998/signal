@@ -2396,6 +2396,25 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
 .review-workspace .contradiction-card,
 .review-workspace .promise-ledger,
 .review-workspace .semantic-canvas { border-color: var(--line); border-radius: 6px; background: #ffffff; box-shadow: none; }
+.promise-agent strong { color: var(--ink); font-size: 13px; }
+.promise-agent span { color: #5b6b76; font: 11px/1.35 var(--sans); }
+.theory-principle b { color: #075d5c; font: 700 10px/1.35 var(--sans); }
+.theory-principle span { color: #52657a; font: 11px/1.4 var(--sans); }
+.promise-arrow { color: #52657a; }
+.promise-body strong { color: var(--ink); font-size: 13px; font-weight: 650; line-height: 1.35; }
+.promise-body small { color: #52657a; font: 11px/1.45 var(--sans); }
+.assessment { color: #075d5c; border-color: #6e9793; background: #f3f9f8; font: 650 11px/1 var(--sans); }
+.assessment.qualified { color: #805b1a; border-color: #d1b37b; background: #fff9ed; }
+.assessment.broken { color: #9d4141; border-color: #d79b94; background: #fff8f7; }
+.semantic-node.source circle { fill: #ffffff; stroke: #64748b; }
+.semantic-node.source text { fill: #334155; }
+.semantic-node.source .node-sub { fill: #52657a; }
+.semantic-node.dimmed { opacity: .74; }
+.semantic-edge.dimmed { opacity: .45; }
+.map-filter { color: #52657a; }
+.map-legend span { color: #52657a; font: 11px/1 var(--sans); text-transform: none; }
+.topology-panel dt { color: #52657a; }
+.topology-panel dd { color: var(--ink); }
 .contradiction-card .card-kicker { color: #075d5c; }
 .contradiction-card .card-kicker b { color: #315e5d; border-color: #b9d5d1; background: #f3f9f8; }
 .evidence-versus { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
