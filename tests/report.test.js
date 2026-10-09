@@ -80,6 +80,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /id="scenarioList"/);
   assert.match(html, /id="reviewWorkspace"/);
   assert.match(html, /id="loadLiveButton" hidden/);
+  assert.match(html, /id="openLatestLiveButton" type="button" hidden/);
   assert.match(html, /id="liveAnalyzeButton"/);
   assert.match(html, /id="proofPanel"/);
   assert.match(html, /id="sourceDialog"/);
@@ -95,6 +96,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /get\('tour'\) === '1'/);
   assert.match(app, /never calls a model/);
   assert.match(app, /refreshConnections/);
+  assert.match(app, /\$\('#openLatestLiveButton'\)\.hidden = false/);
   assert.match(app, /No scope, requirements, risks, or technical plan has been generated yet/);
   assert.match(app, /scopeReportReady = report.mode === 'live'/);
   assert.doesNotMatch(app, /generateFactoryBlueprint/);

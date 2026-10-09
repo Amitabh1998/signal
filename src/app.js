@@ -653,6 +653,7 @@ async function prepareLocalLiveReport() {
     report.provenance = raw.provenance;
     localLiveReport = report;
     $('#loadLiveButton').hidden = false;
+    $('#openLatestLiveButton').hidden = false;
   } catch {
     // The published demo intentionally has no local run file. Manual import remains available.
   }
@@ -949,6 +950,7 @@ $('#factoryClearButton').addEventListener('click', () => {
 $('#liveAnalyzeButton').addEventListener('click', runLiveAnalysis);
 $('#proofToggle').addEventListener('click', () => setProofMode(!proofMode));
 $('#loadLiveButton').addEventListener('click', loadLocalLiveReport);
+$('#openLatestLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#importButton').addEventListener('click', () => $('#reportInput').click());
 $('#reportInput').addEventListener('change', event => event.target.files[0] && importReport(event.target.files[0]));
 $('#uploadTrigger').addEventListener('click', () => $('#fileInput').click());
