@@ -57,6 +57,7 @@
               <p class="request-validation" id="requestValidation">Describe the microapp you want to build to run the scope workflow.</p>
               <div class="context-row">
                 <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
+                <label class="file-select" for="fileInput">Add context</label>
                 <span id="contextHint">Only add files that change the scope.</span>
               </div>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
@@ -230,30 +231,34 @@
           <code>not verified</code>
         </section>
 
-        <section class="factory-operators" aria-labelledby="factoryOperatorsTitle">
-          <div class="factory-operators-heading">
-            <div>
-              <h3 id="factoryOperatorsTitle">Who shaped this scope</h3>
-              <p>Three bounded LLM roles work in parallel. RocketRide then reconciles and validates their output; the coding runner starts only after you create a build mission.</p>
-            </div>
+        <details class="scope-trace">
+          <summary>
+            <span>How this scope was produced</span>
             <span id="factoryRunState" aria-live="polite">Awaiting a scope run</span>
-          </div>
-          <ol class="factory-operator-list">
-            <li class="factory-operator role" data-factory-role="customer"><span>Customer Advocate</span><p>Finds the user outcome and the evidence that supports it.</p><em>Specialist role</em></li>
-            <li class="factory-operator role" data-factory-role="skeptic"><span>Skeptic</span><p>Surfaces counter-evidence, uncertainty, and scope risk.</p><em>Specialist role</em></li>
-            <li class="factory-operator role" data-factory-role="strategist"><span>Product Strategist</span><p>Proposes the smallest reversible product decision.</p><em>Specialist role</em></li>
-            <li class="factory-operator system" data-factory-role="synthesis"><span>RocketRide synthesis</span><p>Reconciles the roles, validates the report, and links proof.</p><em>System step</em></li>
-          </ol>
-        </section>
+          </summary>
+          <section class="factory-operators" aria-labelledby="factoryOperatorsTitle">
+            <div class="factory-operators-heading">
+              <div>
+                <h3 id="factoryOperatorsTitle">The roles behind this decision</h3>
+                <p>RocketRide runs the three specialist roles in parallel, then reconciles and validates their outputs before a coding mission can begin.</p>
+              </div>
+            </div>
+            <ol class="factory-operator-list">
+              <li class="factory-operator role" data-factory-role="customer"><span>Customer Advocate</span><p>Finds the user outcome and supporting evidence.</p><em>Specialist</em></li>
+              <li class="factory-operator role" data-factory-role="skeptic"><span>Skeptic</span><p>Surfaces counter-evidence, uncertainty, and scope risk.</p><em>Specialist</em></li>
+              <li class="factory-operator role" data-factory-role="strategist"><span>Product Strategist</span><p>Proposes the smallest reversible product decision.</p><em>Specialist</em></li>
+              <li class="factory-operator system" data-factory-role="synthesis"><span>RocketRide synthesis</span><p>Reconciles the roles, validates the report, and links proof.</p><em>System step</em></li>
+            </ol>
+          </section>
 
-        <section class="pipeline-strip" aria-label="RocketRide pipeline trace">
-          <div class="pipeline-title">
-            <strong>RocketRide scope workflow</strong>
-            <span class="runtime" id="runtimeLabel">demo result</span>
-          </div>
-          <p class="pipeline-explainer">Recorded workflow steps for this scope run.</p>
-          <div class="pipeline" id="pipeline"></div>
-        </section>
+          <section class="pipeline-strip" aria-label="RocketRide pipeline trace">
+            <div class="pipeline-title">
+              <strong>Workflow trace</strong>
+              <span class="runtime" id="runtimeLabel">demo result</span>
+            </div>
+            <div class="pipeline" id="pipeline"></div>
+          </section>
+        </details>
 
         <nav class="view-tabs" aria-label="Decision views">
           <button class="active" data-view="decisionView">Decision</button>
