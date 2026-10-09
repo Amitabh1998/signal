@@ -53,7 +53,8 @@
                 <p>Name the user, the behavior that should change, and any constraints worth protecting.</p>
               </div>
               <label for="factoryIdeaInput">Product request</label>
-              <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
+              <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" aria-describedby="requestValidation" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
+              <p class="request-validation" id="requestValidation">Describe the microapp you want to build to run the scope workflow.</p>
               <div class="context-row">
                 <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" onchange="document.getElementById('nativeFileSelection').hidden = !this.files.length; document.getElementById('nativeFileSelection').textContent = [...this.files].map(file => file.name).join(', ');" />
                 <span id="contextHint">Only add files that change the scope.</span>
@@ -69,7 +70,7 @@
                 <div class="source-list" id="sourceList"></div>
               </details>
               <div class="factory-actions">
-                <button class="button button-primary" id="factoryGenerateButton" type="button"><span>◈</span> Run scope workflow</button>
+                <button class="button button-primary" id="factoryGenerateButton" type="button" disabled><span>◈</span> Run scope workflow</button>
                 <button class="button button-ghost" id="factoryClearButton" type="button">Clear</button>
               </div>
               <p class="brief-footnote">RocketRide uses this request and the selected context to produce the scope decision.</p>

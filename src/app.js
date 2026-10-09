@@ -100,6 +100,12 @@ function focusFactoryInput() {
   window.setTimeout(() => $('#factoryIdeaInput').focus(), 350);
 }
 
+function syncScopeAction() {
+  const hasRequest = Boolean($('#factoryIdeaInput').value.trim());
+  $('#factoryGenerateButton').disabled = !hasRequest;
+  $('#requestValidation').classList.toggle('ready', hasRequest);
+}
+
 async function runFactoryPlan() {
   const input = $('#factoryIdeaInput');
   if (!input.value.trim()) {
@@ -861,9 +867,11 @@ async function runLiveAnalysis(event) {
   const brief = $('#factoryIdeaInput').value.trim();
   if (!brief) {
     focusFactoryInput();
-    showToast('Describe and prepare a product request before running the scope workflow.');
+    $('#requestValidation').classList.add('invalid');
+    showToast('Describe the microapp before running the scope workflow.');
     return;
   }
+  $('#requestValidation').classList.remove('invalid');
   const button = event?.currentTarget || $('#liveAnalyzeButton');
   const previous = button.innerHTML;
   button.disabled = true;
@@ -989,17 +997,20 @@ renderScenarios();
 selectScenario(selectedScenario.id);
 renderSources([]);
 renderFactoryEmpty();
+syncScopeAction();
 setProofMode(true);
 prepareLocalLiveReport();
 prepareRocketRideHealth();
 
 $('#factoryGenerateButton').addEventListener('click', runLiveAnalysis);
+$('#factoryIdeaInput').addEventListener('input', syncScopeAction);
 $('#scopeWithRocketRide').addEventListener('click', runLiveAnalysis);
 $('#createMissionReviewButton').addEventListener('click', createBuildMission);
 $('#dispatchExecutionButton').addEventListener('click', dispatchExecution);
 $('#factoryClearButton').addEventListener('click', () => {
   $('#factoryIdeaInput').value = '';
   renderFactoryEmpty();
+  syncScopeAction();
   showToast('Your idea and generated plan were cleared.');
 });
 $('#liveAnalyzeButton').addEventListener('click', runLiveAnalysis);

@@ -82,6 +82,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /id="nativeFileSelection" aria-live="polite" hidden/);
   assert.match(html, /id="factoryGenerateButton"/);
   assert.match(html, /Run scope workflow/);
+  assert.match(html, /id="requestValidation"/);
   assert.match(html, /id="scenarioList"/);
   assert.match(html, /id="reviewWorkspace"/);
   assert.match(html, /id="loadLiveButton" hidden/);
@@ -109,6 +110,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /\$\('\.source-drawer'\)\.open = true/);
   assert.match(app, /renderAttachmentList/);
   assert.match(app, /handleFileSelection/);
+  assert.match(app, /syncScopeAction/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {
