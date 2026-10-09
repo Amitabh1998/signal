@@ -604,9 +604,19 @@ function renderReport(report) {
   $('#confidenceValue').textContent = `${recommendation.confidence}%`;
   $('#confidenceBar').style.width = `${recommendation.confidence}%`;
   $('#evidenceCount').textContent = `${recommendation.supportingEvidence} supporting · ${recommendation.challengingEvidence} challenging`;
-  $('#contradictionTitle').textContent = contradiction.title;
-  $('#contradictionBody').textContent = contradiction.body;
-  $('#evidenceVersus').innerHTML = `<div class="versus-quote">${escapeHtml(contradiction.forQuote)}</div><span class="versus-mark">VERSUS</span><div class="versus-quote">${escapeHtml(contradiction.againstQuote)}</div>`;
+  const isMissingDefinition = /not clearly defined|not defined|uncertainty/i.test(contradiction.forQuote);
+  const decisionTitle = isMissingDefinition
+    ? contradiction.title.replace(/^Uncertainty in\s+/i, 'Define ') + ' clearly'
+    : contradiction.title;
+  const decisionBody = isMissingDefinition
+    ? 'The intended outcome is clear, but the rule that makes it testable is still missing. Set that rule before implementation begins.'
+    : contradiction.body;
+  $('#contradictionTitle').textContent = decisionTitle;
+  $('#contradictionBody').textContent = decisionBody;
+  $('#evidenceVersus').innerHTML = `<div class="decision-side"><span>${isMissingDefinition ? 'Missing definition' : 'Signal to balance'}</span><div class="versus-quote">${escapeHtml(contradiction.forQuote)}</div></div><div class="decision-side"><span>${isMissingDefinition ? 'Required outcome' : 'Evidence to balance'}</span><div class="versus-quote">${escapeHtml(contradiction.againstQuote)}</div></div>`;
+  $('#decisionResolution').textContent = isMissingDefinition
+    ? 'Before build: define the categories, the rule for assigning them, and a few examples that prove the rule works.'
+    : 'Before build: decide which signal is the constraint, then turn that choice into acceptance criteria.';
   $('#experimentTitle').textContent = experiment.title;
   $('#experimentBody').textContent = experiment.body;
   $('#experimentWindow').textContent = experiment.window;

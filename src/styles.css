@@ -1921,14 +1921,14 @@ body { background: #f8fafc; }
   color: #52657a;
 }
 .contradiction-card {
-  border-color: #fecaca;
-  background: #fff7f7;
+  border-color: var(--line);
+  background: #ffffff;
 }
 .contradiction-card .card-kicker,
 .contradiction-icon,
-.versus-mark { color: #dc2626; }
-.contradiction-icon { border-color: #fecaca; background: #fff; }
-.versus-quote { color: #7f1d1d; border-color: #fecaca; background: #fff; }
+.versus-mark { color: #075d5c; }
+.contradiction-icon { color: #075d5c; border-color: #b9d5d1; background: #f3f9f8; }
+.versus-quote { color: #1f3550; border-color: #d8e6e4; background: #fbfefd; }
 .proof-panel {
   border-color: #bfdbfe;
   background: #ffffff;
@@ -2385,6 +2385,13 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
 .review-workspace .contradiction-card,
 .review-workspace .promise-ledger,
 .review-workspace .semantic-canvas { border-color: var(--line); border-radius: 6px; background: #ffffff; box-shadow: none; }
+.contradiction-card .card-kicker { color: #075d5c; }
+.contradiction-card .card-kicker b { color: #315e5d; border-color: #b9d5d1; background: #f3f9f8; }
+.evidence-versus { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.decision-side { display: grid; gap: 7px; }
+.decision-side > span { color: var(--muted); font: 700 10px/1 var(--sans); }
+.decision-side .versus-quote { min-height: 66px; }
+.decision-resolution { margin-top: 14px !important; padding: 11px 12px; color: #315e5d !important; border-left: 2px solid #0f766e; background: #f3f9f8; font-size: 11px !important; line-height: 1.5 !important; }
 
 .execution-timeline { grid-column: 1 / -1; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); list-style: none; }
 .execution-timeline li { min-height: 74px; padding: 13px 14px; border-left: 1px solid var(--line); }
@@ -2531,4 +2538,5 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   .header-actions .button:last-child { grid-column: 1 / -1; }
   .view-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; overflow: visible; }
   .view-tabs button { min-width: 0; padding-right: 8px; white-space: normal; font-size: 12px; line-height: 1.25; text-align: left; }
+  .evidence-versus { grid-template-columns: 1fr; }
 }
