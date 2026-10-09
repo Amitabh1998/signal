@@ -39,7 +39,7 @@ function executionConfig() {
     remote,
     base: process.env.SIGNAL_EXECUTION_BASE || 'main',
     message: enabled
-      ? 'Trusted repository execution is enabled.'
+      ? `Trusted repository execution is enabled. Signal will branch from ${remote}/${process.env.SIGNAL_EXECUTION_BASE || 'main'}.`
       : 'Execution is disabled. Configure SIGNAL_EXECUTION_ENABLED=1 and SIGNAL_EXECUTION_REPO on the local server to dispatch code, tests, and pull requests.'
   };
 }

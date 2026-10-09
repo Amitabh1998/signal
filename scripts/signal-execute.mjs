@@ -5,6 +5,12 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const signalRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const executionEnv = { ...process.env };
+
+// Conductor can inject a read-only temporary token. Let git and gh use the
+// authenticated local account selected by the person running the factory.
+delete executionEnv.GH_TOKEN;
+delete executionEnv.GITHUB_TOKEN;
 
 function parseArgs(argv) {
   const args = {};
@@ -20,7 +26,7 @@ function emit(phase, detail) {
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { encoding: 'utf8', ...options });
+  const result = spawnSync(command, args, { encoding: 'utf8', env: executionEnv, ...options });
   if (result.status !== 0) {
     const output = (result.stderr || result.stdout || `${command} failed`).trim();
     throw new Error(output.slice(0, 6000));
