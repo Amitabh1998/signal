@@ -1,5 +1,11 @@
 "$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
 
 [scripts]
-setup = "true"
-run = "open index.html"
+setup = "npm install"
+run_mode = "concurrent"
+
+[scripts.run.dev]
+available_in = [ "local" ]
+command = "PORT=${CONDUCTOR_PORT:-4173} npm run dev"
+default = true
+icon = "play"
