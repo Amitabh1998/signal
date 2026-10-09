@@ -49,6 +49,65 @@ function sendJson(response, status, payload) {
   response.end(`${JSON.stringify(payload, null, 2)}\n`);
 }
 
+function collectCommand(command, args) {
+  return new Promise(resolve => {
+    let child;
+    try {
+      child = spawn(command, args, { cwd: root, env: process.env });
+    } catch (error) {
+      resolve({ code: -1, output: '', error: error instanceof Error ? error.message : String(error) });
+      return;
+    }
+    let output = '';
+    let errorOutput = '';
+    child.stdout.on('data', chunk => { output = `${output}${chunk}`.slice(-12_000); });
+    child.stderr.on('data', chunk => { errorOutput = `${errorOutput}${chunk}`.slice(-12_000); });
+    child.on('error', error => resolve({ code: -1, output, error: error.message }));
+    child.on('close', code => resolve({ code: code ?? -1, output, error: errorOutput }));
+  });
+}
+
+async function runnerStatus() {
+  const [codex, claude] = await Promise.all([
+    collectCommand('codex', ['login', 'status']),
+    collectCommand('claude', ['auth', 'status'])
+  ]);
+  const codexStatus = `${codex.output}\n${codex.error}`;
+  let claudeState;
+  try { claudeState = JSON.parse(claude.output); } catch { claudeState = null; }
+  return {
+    runners: [
+      {
+        id: 'codex',
+        name: 'Codex',
+        availableForBuilds: true,
+        installed: codex.code !== -1,
+        connected: codex.code === 0 && /logged in/i.test(codexStatus),
+        detail: codex.code === -1 ? 'Codex CLI is not installed.' : codex.code === 0 ? 'Connected on this Mac.' : 'Not connected on this Mac.'
+      },
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        availableForBuilds: false,
+        installed: claude.code !== -1,
+        connected: Boolean(claudeState?.loggedIn),
+        detail: claude.code === -1 ? 'Claude Code is not installed.' : claudeState?.loggedIn ? 'Connected on this Mac.' : 'Not connected on this Mac.'
+      }
+    ]
+  };
+}
+
+function startRunnerLogin(runner) {
+  if (process.platform !== 'darwin') throw new Error('Built-in CLI login currently requires Signal to run on macOS.');
+  const commands = {
+    codex: 'codex login --device-auth',
+    claude: 'claude auth login --claudeai'
+  };
+  const command = commands[runner];
+  if (!command) throw new Error('Unknown coding runner.');
+  return collectCommand('osascript', ['-e', `tell application "Terminal" to do script "${command}"`]);
+}
+
 async function readBody(request) {
   const chunks = [];
   let size = 0;
@@ -161,6 +220,21 @@ const server = createServer(async (request, response) => {
   const pathname = request.url?.split('?')[0];
   if (request.method === 'GET' && pathname === '/api/execution-status') {
     sendJson(response, 200, executionConfig());
+    return;
+  }
+  if (request.method === 'GET' && pathname === '/api/runners') {
+    sendJson(response, 200, await runnerStatus());
+    return;
+  }
+  const runnerLoginMatch = pathname?.match(/^\/api\/runners\/(codex|claude)\/login$/);
+  if (request.method === 'POST' && runnerLoginMatch) {
+    try {
+      const result = await startRunnerLogin(runnerLoginMatch[1]);
+      if (result.code !== 0) throw new Error(result.error || 'Could not open the local Terminal login flow.');
+      sendJson(response, 202, { ok: true, message: 'Terminal opened. Complete the official sign-in there, then refresh the connection state in Signal.' });
+    } catch (error) {
+      sendJson(response, 400, { ok: false, message: error instanceof Error ? error.message : String(error) });
+    }
     return;
   }
   if (request.method === 'POST' && pathname === '/api/execute') {

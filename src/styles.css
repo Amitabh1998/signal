@@ -2295,7 +2295,7 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
 .review-workspace .promise-ledger,
 .review-workspace .semantic-canvas { border-color: var(--line); border-radius: 6px; background: #ffffff; box-shadow: none; }
 
-.execution-timeline { grid-column: 1 / -1; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); list-style: none; }
+.execution-timeline { grid-column: 1 / -1; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--line); list-style: none; }
 .execution-timeline li { min-height: 74px; padding: 13px 14px; border-left: 1px solid var(--line); }
 .execution-timeline li:first-child { border-left: 0; }
 .execution-timeline strong { display: block; color: var(--ink); font-size: 12px; }
@@ -2323,4 +2323,27 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   .execution-timeline { grid-template-columns: 1fr; }
   .execution-timeline li { border-top: 1px solid var(--line); border-left: 0; }
   .execution-timeline li:first-child { border-top: 0; }
+}
+
+.connections-dialog { width: min(660px, calc(100vw - 32px)); padding: 0; overflow: hidden; border-color: var(--line); border-radius: 7px; background: #ffffff; color: var(--ink); box-shadow: 0 18px 50px rgba(16, 32, 51, .2); }
+.connections-dialog::backdrop { background: rgba(16, 32, 51, .28); }
+.connections-intro { max-width: 580px; margin: 20px 24px 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.connection-list { margin: 22px 24px 0; border-top: 1px solid var(--line); }
+.connection-row { min-height: 116px; padding: 18px 0; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); }
+.connection-title { display: flex; align-items: center; gap: 9px; }
+.connection-title strong { color: var(--ink); font-size: 15px; }
+.connection-state { padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.connection-state.connected { color: #075d5c; background: #e4f3f1; }
+.connection-state.disconnected { color: #885b22; background: #fff5e6; }
+.connection-state.unavailable { color: #8f3737; background: #fff0ee; }
+.connection-row p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+.connection-row small { display: block; margin-top: 5px; color: #527d7c; font-size: 11px; line-height: 1.4; }
+.connection-row .button { flex: 0 0 auto; }
+.connections-footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.connections-footer > span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+@media (max-width: 520px) {
+  .connections-intro, .connection-list { margin-left: 18px; margin-right: 18px; }
+  .connection-row { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .connection-row .button { width: 100%; }
+  .connections-footer { align-items: stretch; flex-direction: column; }
 }

@@ -33,6 +33,10 @@ SIGNAL_DELIVERY_REVIEW_REQUIRED=0
 
 When enabled, the local runner creates an isolated git worktree from `SIGNAL_EXECUTION_REMOTE` and `SIGNAL_EXECUTION_BASE`, dispatches Codex CLI with the approved mission, runs the repository's `npm test` and `npm run build` scripts when available, and optionally sends the resulting delivery bundle to RocketRide. It then commits the tested diff, pushes a `signal/*` branch to that same remote, and opens a GitHub pull request with `gh`. The RocketRide review is added to the PR body when available. It requires a working Codex CLI and authenticated GitHub CLI. Keep this server local and only point it at a repository you explicitly trust.
 
+### Coding-runner connections
+
+Use **Connections** in Signal's top bar to check local Codex and Claude Code authentication. On macOS, **Sign in** opens the runner's official CLI authentication flow in Terminal; credentials remain in the CLI's own local store and are never sent through Signal. Current build dispatch uses Codex CLI. Claude Code can be connected in advance, but it is not presented as an available build runner until its dedicated dispatch integration exists.
+
 ## Promise Theory and Semantic Spacetime
 
 Promise Theory is used as an operational contract between pipeline components. Each specialist promises only its own behavior: cite evidence, expose counterarguments, or propose a reversible experiment. The Promise Ledger assesses those promises from returned evidence and traces; it does not treat a prompt as a guarantee.

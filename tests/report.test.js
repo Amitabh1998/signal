@@ -84,6 +84,8 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /id="proofPanel"/);
   assert.match(html, /id="sourceDialog"/);
   assert.match(html, /id="engineStatus"/);
+  assert.match(html, /id="connectionsButton"/);
+  assert.match(html, /id="connectionsDialog"/);
   assert.match(app, /The browser loaded its saved result/);
   assert.match(app, /renderScenarios/);
   assert.match(app, /analyzeSelectedScenario/);
@@ -92,6 +94,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /Absence means "not checked," never "healthy/);
   assert.match(app, /get\('tour'\) === '1'/);
   assert.match(app, /never calls a model/);
+  assert.match(app, /refreshConnections/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {

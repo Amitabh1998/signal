@@ -23,6 +23,7 @@
         <a href="#reviewWorkspace">Builds</a>
       </nav>
       <div class="topbar-actions">
+        <button class="tour-launch" id="connectionsButton" type="button">Connections</button>
         <button class="tour-launch" id="tourButton" type="button">Guided tour</button>
       </div>
     </header>
@@ -448,6 +449,22 @@
     </aside>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog class="trace-dialog connections-dialog" id="connectionsDialog" aria-labelledby="connectionsTitle">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">Local coding runners</span>
+          <h2 id="connectionsTitle">Connections</h2>
+        </div>
+        <button class="icon-button" id="closeConnections" aria-label="Close connections">×</button>
+      </div>
+      <p class="connections-intro">Signal never stores provider credentials. Sign-in happens through the official CLI in Terminal; Signal only reads the resulting local connection state.</p>
+      <div class="connection-list" id="connectionList" aria-live="polite"></div>
+      <div class="dialog-footer connections-footer">
+        <span id="connectionsState">Checking local runners…</span>
+        <button class="button button-ghost" id="refreshConnections" type="button">Refresh status</button>
+      </div>
+    </dialog>
 
     <dialog class="trace-dialog" id="traceDialog">
       <div class="dialog-header">

@@ -306,6 +306,67 @@ async function dispatchExecution() {
   }
 }
 
+function renderConnections(runners) {
+  const list = $('#connectionList');
+  list.innerHTML = runners.map(runner => {
+    const state = !runner.installed ? 'unavailable' : runner.connected ? 'connected' : 'disconnected';
+    const stateLabel = !runner.installed ? 'Not installed' : runner.connected ? 'Connected' : 'Sign-in needed';
+    const capability = runner.availableForBuilds
+      ? 'Available for Signal build missions.'
+      : 'Connection can be prepared now. Signal build dispatch currently uses Codex.';
+    return `
+      <article class="connection-row">
+        <div>
+          <div class="connection-title"><strong>${escapeHtml(runner.name)}</strong><span class="connection-state ${state}">${stateLabel}</span></div>
+          <p>${escapeHtml(runner.detail)}</p>
+          <small>${escapeHtml(capability)}</small>
+        </div>
+        <button class="button button-ghost" type="button" data-runner-login="${escapeHtml(runner.id)}" ${runner.installed && !runner.connected ? '' : 'disabled'}>${runner.connected ? 'Connected' : 'Sign in'}</button>
+      </article>
+    `;
+  }).join('');
+  document.querySelectorAll('[data-runner-login]').forEach(button => {
+    button.addEventListener('click', () => beginRunnerLogin(button.dataset.runnerLogin));
+  });
+}
+
+async function refreshConnections() {
+  const state = $('#connectionsState');
+  state.textContent = 'Checking local runners…';
+  try {
+    const response = await fetch('/api/runners', { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || 'Could not read local runner status.');
+    renderConnections(payload.runners);
+    const connected = payload.runners.filter(runner => runner.connected).length;
+    state.textContent = `${connected} of ${payload.runners.length} local runners connected.`;
+  } catch (error) {
+    state.textContent = error.message;
+    $('#connectionList').replaceChildren();
+  }
+}
+
+async function beginRunnerLogin(runner) {
+  const button = document.querySelector(`[data-runner-login="${runner}"]`);
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Opening Terminal';
+  }
+  try {
+    const response = await fetch(`/api/runners/${encodeURIComponent(runner)}/login`, { method: 'POST' });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) throw new Error(payload.message || 'Could not start local sign-in.');
+    $('#connectionsState').textContent = payload.message;
+    showToast('Terminal opened for secure sign-in. Return here and refresh status when it is complete.', 7000);
+  } catch (error) {
+    $('#connectionsState').textContent = error.message;
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Sign in';
+    }
+  }
+}
+
 function renderSources(sources) {
   displayedSources = sources;
   $('#sourceList').innerHTML = sources.map((source, index) => `
@@ -963,6 +1024,15 @@ document.addEventListener('keydown', event => {
 });
 
 $('#tourButton').addEventListener('click', startTour);
+$('#connectionsButton').addEventListener('click', () => {
+  $('#connectionsDialog').showModal();
+  refreshConnections();
+});
+$('#closeConnections').addEventListener('click', () => $('#connectionsDialog').close());
+$('#connectionsDialog').addEventListener('click', event => {
+  if (event.target === $('#connectionsDialog')) $('#connectionsDialog').close();
+});
+$('#refreshConnections').addEventListener('click', refreshConnections);
 $('#closeTour').addEventListener('click', closeTour);
 $('#tourBack').addEventListener('click', () => advanceTour(-1));
 $('#tourNext').addEventListener('click', () => advanceTour(1));
