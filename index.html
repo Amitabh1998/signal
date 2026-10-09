@@ -33,8 +33,8 @@
         <section class="start-screen" aria-labelledby="startTitle">
           <div class="command-header">
             <div>
-              <h1 id="startTitle">From request to tested pull request.</h1>
-              <p>Start with the change you want to make. Signal scopes it before any code runs.</p>
+              <h1 id="startTitle">From request to microapp.</h1>
+              <p>Describe the outcome you need. Signal scopes it, builds a working microapp, and prepares the implementation for review.</p>
             </div>
             <div class="command-header-actions">
               <button class="button button-ghost" id="importButton">
@@ -68,14 +68,14 @@
             </div>
             <aside class="delivery-line" aria-label="Software factory stages">
               <div class="delivery-line-heading">
-                <div><h3>What this work order produces</h3><p>A human approves the scope before the coding runner starts.</p></div>
+                <div><h3>How a request becomes a microapp</h3><p>A human approves the scope before the coding runner creates the implementation.</p></div>
               </div>
               <ol>
                 <li><div><strong>Scope</strong><span>RocketRide reconciles the request and relevant sources.</span></div><em>Decision</em></li>
                 <li><div><strong>Commitments</strong><span>Each specialist role returns a bounded claim.</span></div><em>Ledger</em></li>
                 <li><div><strong>Trace</strong><span>Evidence, role, and decision stay linked for review.</span></div><em>Evidence</em></li>
-                <li><div><strong>Build</strong><span>The approved mission is implemented on an isolated branch.</span></div><em>Diff</em></li>
-                <li><div><strong>Verify</strong><span>Tests and build pass before a pull request opens.</span></div><em>Pull request</em></li>
+                <li><div><strong>Build</strong><span>The coding runner turns the approved mission into a working microapp on an isolated branch.</span></div><em>Microapp</em></li>
+                <li><div><strong>Verify</strong><span>Tests, build, and delivery review finish before a pull request opens.</span></div><em>Review</em></li>
               </ol>
             </aside>
             <aside class="factory-summary-panel" id="factorySummaryPanel" hidden>
@@ -138,8 +138,8 @@
             <div class="build-mission-heading">
               <div>
                 <span class="eyebrow">Build mission prepared</span>
-                <h2 id="buildMissionTitle">The approved decision is now an implementation package.</h2>
-                <p>It contains the brief, decision, acceptance checks, and build queue. A configured trusted repository lets Signal create a branch, dispatch one bounded coding task, verify it, and open it for human review.</p>
+                <h2 id="buildMissionTitle">The approved decision is now a buildable microapp mission.</h2>
+                <p>It contains the brief, decision, acceptance checks, and build queue. A configured trusted repository lets Signal create a branch, dispatch one bounded coding task, verify the working microapp, and open it for human review.</p>
               </div>
               <div class="mission-state" id="missionState"><i></i><span>Plan ready for handoff</span></div>
             </div>

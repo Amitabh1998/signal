@@ -761,8 +761,8 @@ function loadLocalLiveReport() {
 const tourSteps = [
   {
     eyebrow: 'The essence',
-    title: 'A software factory from brief to pull request.',
-    body: 'Signal turns a product brief and optional context into a scoped build mission, then can implement, test, and open it for review on an explicitly trusted repository.',
+    title: 'A software factory from request to microapp.',
+    body: 'Signal turns a product request and optional context into a scoped build mission, then can build a working microapp, test it, and open the implementation for review on an explicitly trusted repository.',
     target: '.start-screen',
     view: 'decisionView'
   },

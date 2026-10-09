@@ -1,6 +1,6 @@
 # Signal
 
-Signal is a software factory: it turns a mission brief and optional context into a reviewable build mission, then can hand an accepted mission to an explicitly configured local coding runner that implements, tests, and opens a pull request.
+Signal is a software factory: it turns a product request and optional context into a buildable microapp mission, then can hand an accepted mission to an explicitly configured local coding runner that implements, tests, and opens a pull request for review.
 
 RocketRide is an open-source pipeline runtime, not an agent itself. In this project it has two decision workflows:
 
