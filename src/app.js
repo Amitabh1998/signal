@@ -993,7 +993,7 @@ setProofMode(true);
 prepareLocalLiveReport();
 prepareRocketRideHealth();
 
-$('#factoryGenerateButton').addEventListener('click', runFactoryPlan);
+$('#factoryGenerateButton').addEventListener('click', runLiveAnalysis);
 $('#scopeWithRocketRide').addEventListener('click', runLiveAnalysis);
 $('#createMissionReviewButton').addEventListener('click', createBuildMission);
 $('#dispatchExecutionButton').addEventListener('click', dispatchExecution);
