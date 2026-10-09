@@ -342,7 +342,7 @@ function renderSources(sources) {
   if (stagedFiles.length) {
     contextHint.textContent = `${stagedFiles.length} context file${stagedFiles.length === 1 ? '' : 's'} included.`;
   } else {
-    contextHint.textContent = 'Only add files that change the scope.';
+    contextHint.textContent = 'Optional: specs, notes, or data that materially change the scope.';
   }
 }
 
