@@ -1207,6 +1207,33 @@ body {
   gap: 18px;
   align-items: end;
 }
+.local-input-grid {
+  margin-top: 17px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, .6fr);
+  gap: 10px;
+}
+.local-input-card {
+  min-height: 116px;
+  padding: 15px;
+  border: 1px solid #dbe7f5;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+.local-input-card > span {
+  display: block;
+  color: #64748b;
+  font: 8px/1.3 var(--mono);
+  text-transform: uppercase;
+}
+.local-input-card p {
+  margin: 12px 0 0;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
 .readiness-score {
   min-width: 112px;
   padding: 12px;
@@ -1233,6 +1260,10 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .local-input-grid { grid-template-columns: 1fr; }
 }
 .factory-artifact {
   min-height: 190px;

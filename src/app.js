@@ -1,6 +1,5 @@
 import { normalizeReport } from './report.js';
 import { scenarioLibrary, getScenario } from './scenarios.js';
-import { generateFactoryBlueprint } from './software-factory.js';
 
 const $ = selector => document.querySelector(selector);
 let selectedScenario = scenarioLibrary[0];
@@ -11,15 +10,9 @@ let tourIndex = 0;
 let displayedSources = [];
 let stagedEvidenceText = '';
 let proofMode = true;
-let currentBlueprint;
+let currentMission;
 let executionPoll;
-const factoryProcessSteps = [
-  'Framing the user outcome',
-  'Drafting the user flow',
-  'Outlining the system shape',
-  'Identifying build risks',
-  'Preparing the mission brief'
-];
+let scopeReportReady = false;
 const rocketRidePipeline = [
   { label: 'Read sources', detail: 'processing', type: 'step' },
   { label: 'Customer Advocate', detail: 'specialist role', type: 'role' },
@@ -44,76 +37,36 @@ function sourceKindLabel(source) {
   return String(source.kind || 'SOURCE').toUpperCase() === 'AGENT' ? 'CALL' : String(source.kind || 'SOURCE').toUpperCase();
 }
 
-function renderFactoryBlueprint(blueprint) {
-  currentBlueprint = blueprint;
-  $('#factoryProductName').textContent = blueprint.productName;
-  $('#factoryOutcome').textContent = blueprint.finalOutcome;
-  $('#factoryAudience').textContent = blueprint.audience;
-  $('#factoryDifferentiator').textContent = blueprint.differentiator;
-  $('#factoryRisk').textContent = blueprint.primaryRisk;
-  $('#factoryAudienceLabel').textContent = 'Audience';
-  $('#factoryDifferentiatorLabel').textContent = 'Differentiator';
-  $('#factoryRiskLabel').textContent = 'Main risk';
-  $('#factoryArtifactCount').textContent = '04';
-  $('#factoryConflictCount').textContent = `${String(blueprint.conflicts.length).padStart(2, '0')} issues`;
-
-  $('#factoryArtifactGrid').innerHTML = blueprint.artifacts.slice(0, 4).map(artifact => `
-    <article class="factory-artifact ${escapeHtml(artifact.status)}">
-      <div class="artifact-top">
-        <span>${escapeHtml(artifact.owner)}</span>
-        <b>${escapeHtml(artifact.status)}</b>
-      </div>
-      <h3>${escapeHtml(artifact.title)}</h3>
-      <ul>
-        ${artifact.bullets.map(bullet => `<li>${escapeHtml(bullet)}</li>`).join('')}
-      </ul>
-    </article>
-  `).join('');
-
-  $('#factoryConflictList').innerHTML = blueprint.conflicts.map(conflict => `
-    <article class="factory-conflict ${escapeHtml(conflict.severity)}">
-      <span>${escapeHtml(conflict.severity)}</span>
-      <strong>${escapeHtml(conflict.title)}</strong>
-      <p>${escapeHtml(conflict.resolution)}</p>
-    </article>
-  `).join('');
-
-  $('#factoryGateList').innerHTML = blueprint.readinessGates.map(gate => {
-    const percent = Math.round((gate.value / gate.total) * 100);
-    return `
-      <article class="factory-gate ${escapeHtml(gate.status)}">
-        <div><strong>${escapeHtml(gate.label)}</strong><span>${gate.value}/${gate.total}</span></div>
-        <i><b style="width: ${percent}%"></b></i>
-      </article>
-    `;
-  }).join('');
-
-  $('#factoryBuildQueue').innerHTML = blueprint.nextBuildQueue.map(item => `<li>${escapeHtml(item)}</li>`).join('');
-  $('#missionScope').textContent = `Pin the ${blueprint.productName} brief, the highest-risk assumption, and the first acceptance checks.`;
-  $('#missionName').textContent = `${blueprint.productName} / first build mission`;
-  $('#missionDescription').textContent = 'Create a reviewable local handoff now. A configured trusted repository can then receive this bounded mission for implementation.';
+function missionTitleFromRequest(request) {
+  const firstLine = String(request).split(/\n|[.!?]/)[0].trim().replace(/^(build|create|make)\s+/i, '');
+  return firstLine ? firstLine.slice(0, 72) : 'Microapp request';
 }
 
-function generateFactoryFromInput({ announce = true } = {}) {
-  const input = $('#factoryIdeaInput');
-  const blueprint = generateFactoryBlueprint(input.value);
-  renderFactoryBlueprint(blueprint);
-  if (announce) {
-    showToast(`Drafted a local mission brief for ${blueprint.productName}.`);
-  }
-  return blueprint;
+function renderPreparedInputs() {
+  const request = $('#factoryIdeaInput').value.trim();
+  const stagedFiles = displayedSources.filter(source => source.contentStatus === 'staged');
+  $('#factoryProductName').textContent = 'Request staged locally';
+  $('#factoryOutcome').textContent = 'No scope, requirements, risks, or technical plan has been generated yet.';
+  $('#factoryAudienceLabel').textContent = 'Product request';
+  $('#factoryAudience').textContent = 'Ready to send';
+  $('#factoryDifferentiatorLabel').textContent = 'Attached context';
+  $('#factoryDifferentiator').textContent = stagedFiles.length ? `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} staged` : 'None attached';
+  $('#factoryRiskLabel').textContent = 'Next step';
+  $('#factoryRisk').textContent = 'Run RocketRide scope workflow';
+  $('#factoryArtifactCount').textContent = stagedFiles.length ? '02' : '01';
+  $('#localBriefRequest').textContent = request;
+  $('#localBriefContext').textContent = stagedFiles.length
+    ? stagedFiles.map(source => source.name).join(', ')
+    : 'No files attached. RocketRide will analyze the product request only.';
+  $('#missionScope').textContent = 'Await an approved RocketRide decision before preparing an implementation mission.';
 }
 
 function renderFactoryEmpty() {
   $('#factorySummaryPanel').hidden = true;
   $('#factoryArtifactCount').textContent = '00';
-  $('#factoryConflictCount').textContent = 'No issues yet';
-  $('#factoryArtifactGrid').replaceChildren();
-  $('#factoryConflictList').replaceChildren();
-  $('#factoryGateList').replaceChildren();
-  $('#factoryBuildQueue').replaceChildren();
+  $('#localBriefRequest').textContent = '';
+  $('#localBriefContext').textContent = '';
   $('.factory-output').hidden = true;
-  $('#factoryProcess').hidden = true;
   $('#buildMission').hidden = true;
   $('#missionState').classList.remove('created');
   $('#missionState').innerHTML = '<i></i><span>Decision required first</span>';
@@ -123,19 +76,8 @@ function renderFactoryEmpty() {
   $('#createMissionButton').innerHTML = '<span>✓</span> Build mission prepared';
   $('#createMissionReviewButton').disabled = false;
   $('#createMissionReviewButton').innerHTML = '<span class="button-spark">↗</span><span>Create build mission</span>';
-  currentBlueprint = undefined;
-}
-
-function setFactoryProcess(activeIndex = -1, completed = false) {
-  $('#factoryProcessStatus').textContent = completed
-    ? 'Brief ready for RocketRide'
-    : activeIndex >= 0
-      ? factoryProcessSteps[activeIndex]
-      : 'Waiting for your brief';
-  document.querySelectorAll('[data-process-step]').forEach((step, index) => {
-    step.classList.toggle('active', index === activeIndex && !completed);
-    step.classList.toggle('complete', completed || index < activeIndex);
-  });
+  currentMission = undefined;
+  scopeReportReady = false;
 }
 
 function focusFactoryInput() {
@@ -154,29 +96,35 @@ async function runFactoryPlan() {
   const button = $('#factoryGenerateButton');
   const original = button.innerHTML;
   button.disabled = true;
-  button.textContent = 'Drafting scope';
+  button.textContent = 'Preparing inputs';
   $('.factory-output').hidden = true;
 
-  const blueprint = generateFactoryFromInput();
+  currentMission = {
+    title: missionTitleFromRequest(input.value),
+    brief: input.value.trim()
+  };
+  scopeReportReady = false;
+  renderPreparedInputs();
+  $('#factorySummaryPanel').hidden = false;
   $('.factory-output').hidden = false;
   $('#buildMission').hidden = true;
-  $('#factoryProcess').hidden = true;
   button.disabled = false;
   button.innerHTML = original;
   document.querySelector('.factory-output').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  return blueprint;
+  showToast('Inputs staged locally. Run RocketRide to generate the scope report.');
+  return currentMission;
 }
 
 function createBuildMission(event) {
-  if (!currentBlueprint) {
-    showToast('Draft a mission brief before creating a build mission.');
+  if (!currentMission || !scopeReportReady) {
+    showToast('Run the live RocketRide scope workflow before creating a build mission.');
     return;
   }
   const button = $('#createMissionButton');
   const reviewButton = event?.currentTarget;
   $('#missionState').classList.add('created');
   $('#missionState').innerHTML = '<i></i><span>Mission prepared for a repository</span>';
-  $('#missionName').textContent = `${currentBlueprint.productName} / mission prepared`;
+  $('#missionName').textContent = `${currentMission.title} / mission prepared`;
   $('#missionDescription').textContent = 'The brief, build queue, risk, and verification gates are packaged. With a configured trusted repository, Signal creates an isolated branch, dispatches the coding agent, runs tests and build, then opens a reviewable pull request.';
   button.disabled = true;
   button.innerHTML = '<span>✓</span> Build mission prepared';
@@ -251,7 +199,7 @@ async function prepareExecutionStatus() {
       ? config.deliveryReviewRequired ? 'Required before PR' : 'Enabled before PR'
       : 'Not enabled';
     $('#executionDescription').textContent = config.message;
-    $('#dispatchExecutionButton').disabled = !config.enabled || !currentBlueprint;
+    $('#dispatchExecutionButton').disabled = !config.enabled || !currentMission || !scopeReportReady;
     setExecutionState();
   } catch {
     $('#executionDescription').textContent = 'Execution status is unavailable. Start Signal through the local server to connect a trusted repository.';
@@ -283,8 +231,8 @@ async function pollExecution(id) {
 }
 
 async function dispatchExecution() {
-  if (!currentBlueprint) {
-    showToast('Create a build mission from the reviewed scope before dispatching implementation.');
+  if (!currentMission || !scopeReportReady) {
+    showToast('Create a build mission from a live RocketRide scope report before dispatching implementation.');
     return;
   }
   const button = $('#dispatchExecutionButton');
@@ -294,7 +242,7 @@ async function dispatchExecution() {
     const response = await fetch('/api/execute', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: currentBlueprint.productName, brief: $('#factoryIdeaInput').value.trim() })
+      body: JSON.stringify({ title: currentMission.title, brief: currentMission.brief })
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.message || payload.message || 'Could not start implementation.');
@@ -895,6 +843,12 @@ async function analyzeSelectedScenario() {
 }
 
 async function runLiveAnalysis(event) {
+  const brief = $('#factoryIdeaInput').value.trim();
+  if (!brief) {
+    focusFactoryInput();
+    showToast('Describe and prepare a product request before running the scope workflow.');
+    return;
+  }
   const button = event?.currentTarget || $('#liveAnalyzeButton');
   const previous = button.innerHTML;
   button.disabled = true;
@@ -922,6 +876,11 @@ async function runLiveAnalysis(event) {
     report.mode = payload.report.mode === 'live' ? 'live' : 'imported';
     report.provenance = payload.report.provenance;
     renderReport(report);
+    currentMission = {
+      title: missionTitleFromRequest(brief),
+      brief
+    };
+    scopeReportReady = report.mode === 'live';
     showReportTruth(report, 'local');
     scrollToReview();
     $('#engineStatus').className = 'engine-status healthy';
@@ -973,6 +932,7 @@ async function addUnanalyzedFiles(files) {
   })));
   stagedEvidenceText = added.map(source => `SOURCE: ${source.name}\n${source.content}`).join('\n\n');
   renderSources([...displayedSources, ...added]);
+  if (!$('.factory-output').hidden) renderPreparedInputs();
   $('#scenarioOutcomeTitle').textContent = 'Custom evidence staged';
   $('#scenarioOutcomeBody').textContent = 'Run RocketRide to generate a real outcome from these files. The UI will not invent an answer from uploaded evidence.';
   $('#scenarioDecisionType').textContent = 'Custom live run';
@@ -985,7 +945,6 @@ renderScenarios();
 selectScenario(selectedScenario.id);
 renderSources([]);
 renderFactoryEmpty();
-setFactoryProcess();
 setProofMode(true);
 prepareLocalLiveReport();
 prepareRocketRideHealth();
@@ -997,7 +956,6 @@ $('#dispatchExecutionButton').addEventListener('click', dispatchExecution);
 $('#factoryClearButton').addEventListener('click', () => {
   $('#factoryIdeaInput').value = '';
   renderFactoryEmpty();
-  setFactoryProcess();
   showToast('Your idea and generated plan were cleared.');
 });
 $('#liveAnalyzeButton').addEventListener('click', runLiveAnalysis);

@@ -61,10 +61,10 @@
                 <div class="source-list" id="sourceList"></div>
               </details>
               <div class="factory-actions">
-                <button class="button button-primary" id="factoryGenerateButton" type="button">Draft scope</button>
+                <button class="button button-primary" id="factoryGenerateButton" type="button">Prepare inputs</button>
                 <button class="button button-ghost" id="factoryClearButton" type="button">Clear</button>
               </div>
-              <p class="brief-footnote">This drafts a local brief. RocketRide runs only when you choose <strong>Run scope workflow</strong>.</p>
+              <p class="brief-footnote">This stages your inputs locally. RocketRide runs only when you choose <strong>Run scope workflow</strong>.</p>
             </div>
             <aside class="delivery-line" aria-label="Software factory stages">
               <div class="delivery-line-heading">
@@ -79,8 +79,8 @@
               </ol>
             </aside>
             <aside class="factory-summary-panel" id="factorySummaryPanel" hidden>
-              <span class="eyebrow">Draft plan</span>
-              <h3 id="factoryProductName">Your plan</h3>
+              <span class="eyebrow">Local input package</span>
+              <h3 id="factoryProductName">Request staged</h3>
               <p id="factoryOutcome"></p>
               <dl>
                 <div><dt id="factoryAudienceLabel">Audience</dt><dd id="factoryAudience"></dd></div>
@@ -90,47 +90,27 @@
             </aside>
           </section>
 
-          <section class="factory-process" id="factoryProcess" aria-live="polite" hidden>
-            <div class="factory-process-heading">
-              <div><span class="eyebrow">Brief drafting</span><strong id="factoryProcessStatus">Waiting for your brief</strong></div>
-              <span>Local preview only</span>
-            </div>
-            <ol class="factory-process-list" id="factoryProcessList">
-              <li data-process-step="0"><b>01</b><span>Frame the user outcome</span></li>
-              <li data-process-step="1"><b>02</b><span>Draft the user flow</span></li>
-              <li data-process-step="2"><b>03</b><span>Outline the system shape</span></li>
-              <li data-process-step="3"><b>04</b><span>Identify build risks</span></li>
-              <li data-process-step="4"><b>05</b><span>Prepare the mission brief</span></li>
-            </ol>
-            <p>Next, optionally add files with the + button. Then run the RocketRide workflow. It applies the Customer Advocate, Skeptic, and Product Strategist roles to the same brief and context.</p>
-          </section>
-
-          <section class="factory-output" aria-label="Generated software product blueprint" hidden>
+          <section class="factory-output" aria-label="Prepared scope workflow inputs" hidden>
             <div class="factory-output-heading">
               <div>
-                <span class="eyebrow">Local brief package</span>
-                <h2>Review the core inputs before running the scope workflow.</h2>
+                <span class="eyebrow">Local input package</span>
+                <h2>Confirm the exact inputs before running the scope workflow.</h2>
               </div>
-              <div class="readiness-score"><strong id="factoryArtifactCount">04</strong><span>core inputs</span></div>
+              <div class="readiness-score"><strong id="factoryArtifactCount">02</strong><span>input types</span></div>
             </div>
-            <div class="factory-artifact-grid" id="factoryArtifactGrid"></div>
+            <div class="local-input-grid">
+              <article class="local-input-card">
+                <span>Product request</span>
+                <p id="localBriefRequest"></p>
+              </article>
+              <article class="local-input-card">
+                <span>Attached context</span>
+                <p id="localBriefContext"></p>
+              </article>
+            </div>
             <div class="scope-command">
-              <div><strong>Ready to run the scope workflow?</strong><span>RocketRide runs the configured .pipe on your brief and any files added with the + button. It returns scope, risks, a recommendation, and proof links for review.</span></div>
+              <div><strong>Ready to run the scope workflow?</strong><span>RocketRide reads the exact request and files shown above. It is the first step that can produce scope, risks, a recommendation, commitments, and proof links.</span></div>
               <button class="button button-primary" id="scopeWithRocketRide" type="button"><span>◈</span> Run scope workflow</button>
-            </div>
-            <div class="factory-bottom-grid">
-              <section class="panel factory-conflicts">
-                <div class="panel-heading"><span class="eyebrow">Conflict resolution</span><span id="factoryConflictCount">03 issues</span></div>
-                <div id="factoryConflictList"></div>
-              </section>
-              <section class="panel factory-gates">
-                <div class="panel-heading"><span class="eyebrow">Readiness gates</span><span>pre-code check</span></div>
-                <div id="factoryGateList"></div>
-              </section>
-              <section class="panel factory-queue">
-                <div class="panel-heading"><span class="eyebrow">Next build queue</span><span>execution wedge</span></div>
-                <ol id="factoryBuildQueue"></ol>
-              </section>
             </div>
           </section>
 

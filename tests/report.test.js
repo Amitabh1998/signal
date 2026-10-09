@@ -95,6 +95,9 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /get\('tour'\) === '1'/);
   assert.match(app, /never calls a model/);
   assert.match(app, /refreshConnections/);
+  assert.match(app, /No scope, requirements, risks, or technical plan has been generated yet/);
+  assert.match(app, /scopeReportReady = report.mode === 'live'/);
+  assert.doesNotMatch(app, /generateFactoryBlueprint/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {
