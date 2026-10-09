@@ -56,9 +56,12 @@
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" aria-describedby="requestValidation" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <p class="request-validation" id="requestValidation">Describe the microapp you want to build to run the scope workflow.</p>
               <div class="context-row">
+                <div class="context-copy">
+                  <strong>Supporting context</strong>
+                  <span id="contextHint">Optional files that materially change the scope.</span>
+                </div>
                 <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
-                <label class="file-select" for="fileInput">Add context</label>
-                <span id="contextHint">Only add files that change the scope.</span>
+                <label class="file-select" for="fileInput"><span aria-hidden="true">+</span> Attach files</label>
               </div>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
                 <strong>Context included in this scope run</strong>
