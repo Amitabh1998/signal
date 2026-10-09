@@ -1008,10 +1008,17 @@ $('#loadLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#openLatestLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#importButton').addEventListener('click', () => $('#reportInput').click());
 $('#reportInput').addEventListener('change', event => event.target.files[0] && importReport(event.target.files[0]));
-$('#fileInput').addEventListener('change', async event => {
+let lastHandledFileSelection = '';
+async function handleFileSelection(event) {
+  const selectionKey = [...event.target.files].map(file => `${file.name}:${file.size}:${file.lastModified}`).join('|');
+  if (!selectionKey || selectionKey === lastHandledFileSelection) return;
+  lastHandledFileSelection = selectionKey;
   await addUnanalyzedFiles(event.target.files);
   event.target.value = '';
-});
+  lastHandledFileSelection = '';
+}
+$('#fileInput').addEventListener('input', handleFileSelection);
+$('#fileInput').addEventListener('change', handleFileSelection);
 $('#dismissTruth').addEventListener('click', () => { $('#truthBanner').hidden = true; });
 $('[data-open-trace]').addEventListener('click', () => $('#traceDialog').showModal());
 $('#closeTrace').addEventListener('click', () => $('#traceDialog').close());

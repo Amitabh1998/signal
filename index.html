@@ -55,10 +55,11 @@
               <label for="factoryIdeaInput">Product request</label>
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <div class="context-row">
-                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
+                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" onchange="document.getElementById('nativeFileSelection').hidden = !this.files.length; document.getElementById('nativeFileSelection').textContent = [...this.files].map(file => file.name).join(', ');" />
                 <span id="contextHint">Only add files that change the scope.</span>
                 <span class="context-attachment" id="contextAttachment" hidden></span>
               </div>
+              <output class="native-file-selection" id="nativeFileSelection" aria-live="polite" hidden></output>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
                 <strong>Attached files</strong>
                 <ul id="attachmentListItems"></ul>

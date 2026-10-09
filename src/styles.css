@@ -2171,6 +2171,15 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   font-size: 11px;
   font-weight: 700;
 }
+.native-file-selection {
+  margin: 8px 0 0;
+  display: block;
+  color: #075d5c;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.native-file-selection[hidden] { display: none; }
 .attachment-list {
   margin: 10px 0 2px;
   padding: 10px 0;
