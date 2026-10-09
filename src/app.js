@@ -322,11 +322,23 @@ function renderSources(sources) {
       <span class="source-status ${escapeHtml(source.status)}"></span>
     </button>
   `).join('');
+  const stagedFiles = sources.filter(source => source.contentStatus === 'staged');
   const status = $('#sourceDrawerStatus');
   if (status) {
-    status.textContent = sources.length
-      ? `${sources.length} file${sources.length === 1 ? '' : 's'} staged locally.`
+    status.textContent = stagedFiles.length
+      ? `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} staged locally.`
       : 'No files attached.';
+  }
+  const contextHint = $('#contextHint');
+  const contextAttachment = $('#contextAttachment');
+  if (stagedFiles.length) {
+    contextHint.textContent = 'Ready for the scope workflow.';
+    contextAttachment.hidden = false;
+    contextAttachment.textContent = `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} attached`;
+  } else {
+    contextHint.textContent = 'Only add files that change the scope.';
+    contextAttachment.hidden = true;
+    contextAttachment.textContent = '';
   }
   document.querySelectorAll('.source-item').forEach(button => {
     button.addEventListener('click', () => openEvidenceSource(displayedSources[Number(button.dataset.sourceIndex)]));
@@ -919,8 +931,10 @@ async function addUnanalyzedFiles(files) {
     contentStatus: 'staged',
     status: 'pending'
   })));
-  stagedEvidenceText = added.map(source => `SOURCE: ${source.name}\n${source.content}`).join('\n\n');
+  const allStagedSources = [...displayedSources.filter(source => source.contentStatus === 'staged'), ...added];
+  stagedEvidenceText = allStagedSources.map(source => `SOURCE: ${source.name}\n${source.content}`).join('\n\n');
   renderSources([...displayedSources, ...added]);
+  $('.source-drawer').open = true;
   if (!$('.factory-output').hidden) renderPreparedInputs();
   $('#scenarioOutcomeTitle').textContent = 'Custom evidence staged';
   $('#scenarioOutcomeBody').textContent = 'Run RocketRide to generate a real outcome from these files. The UI will not invent an answer from uploaded evidence.';
@@ -953,7 +967,10 @@ $('#loadLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#openLatestLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#importButton').addEventListener('click', () => $('#reportInput').click());
 $('#reportInput').addEventListener('change', event => event.target.files[0] && importReport(event.target.files[0]));
-$('#fileInput').addEventListener('change', event => addUnanalyzedFiles(event.target.files));
+$('#fileInput').addEventListener('change', async event => {
+  await addUnanalyzedFiles(event.target.files);
+  event.target.value = '';
+});
 $('#dismissTruth').addEventListener('click', () => { $('#truthBanner').hidden = true; });
 $('[data-open-trace]').addEventListener('click', () => $('#traceDialog').showModal());
 $('#closeTrace').addEventListener('click', () => $('#traceDialog').close());

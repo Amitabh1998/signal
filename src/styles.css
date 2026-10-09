@@ -2162,6 +2162,15 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
 .factory-input-panel textarea::placeholder { color: #596d78; opacity: 1; }
 .factory-input-panel textarea:focus { border-color: var(--acid); box-shadow: 0 0 0 3px rgba(9, 107, 106, .12); }
 .context-row { min-height: 46px; padding: 6px 0; display: flex; align-items: center; gap: 12px; color: var(--muted); border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+.context-attachment {
+  padding: 4px 7px;
+  color: #075d5c;
+  border: 1px solid #b9d5d1;
+  border-radius: 4px;
+  background: #f3f9f8;
+  font-size: 11px;
+  font-weight: 700;
+}
 .file-input {
   position: absolute;
   width: 1px;

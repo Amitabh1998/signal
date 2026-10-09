@@ -56,7 +56,8 @@
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <div class="context-row">
                 <label class="text-button" for="fileInput">Attach context</label>
-                <span>Only add files that change the scope.</span>
+                <span id="contextHint">Only add files that change the scope.</span>
+                <span class="context-attachment" id="contextAttachment" hidden></span>
                 <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" />
               </div>
               <details class="source-drawer">
