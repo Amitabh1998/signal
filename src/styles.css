@@ -2223,12 +2223,18 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   white-space: nowrap;
   border: 0;
 }
-.file-select {
+.factory-input-panel .file-select {
+  width: 132px;
+  height: 40px;
   min-height: 40px;
+  margin-top: 0;
   padding: 0 13px;
   display: inline-flex;
   align-items: center;
+  align-self: center;
+  justify-content: center;
   flex: 0 0 auto;
+  box-sizing: border-box;
   color: #075d5c;
   border: 1px solid #93beb9;
   border-radius: 4px;
@@ -2545,5 +2551,5 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   .view-tabs button { min-width: 0; padding-right: 8px; white-space: normal; font-size: 12px; line-height: 1.25; text-align: left; }
   .evidence-versus { grid-template-columns: 1fr; }
   .context-upload { align-items: flex-start; flex-direction: column; gap: 12px; }
-  .context-upload .file-select { width: 100%; justify-content: center; }
+  .context-upload .file-select { width: 100%; height: 42px; margin-top: 0; align-self: stretch; justify-content: center; }
 }
