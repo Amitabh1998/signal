@@ -55,11 +55,14 @@
               <label for="factoryIdeaInput">Product request</label>
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" aria-describedby="requestValidation" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <p class="request-validation" id="requestValidation">Describe the microapp you want to build to run the scope workflow.</p>
-              <div class="context-row">
+              <section class="context-upload" aria-labelledby="contextUploadTitle">
+                <div class="context-copy">
+                  <div class="context-label"><strong id="contextUploadTitle">Supporting files</strong><span>Optional</span></div>
+                  <p id="contextHint">Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, and CSV are supported.</p>
+                </div>
                 <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
-                <label class="file-select" for="fileInput">Attach files</label>
-                <span id="contextHint">Optional: specs, notes, or data that materially change the scope.</span>
-              </div>
+                <label class="file-select" for="fileInput">Choose files</label>
+              </section>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
                 <strong>Context included in this scope run</strong>
                 <ul id="attachmentListItems"></ul>

@@ -340,9 +340,9 @@ function renderSources(sources) {
   const stagedFiles = sources.filter(source => source.contentStatus === 'staged');
   const contextHint = $('#contextHint');
   if (stagedFiles.length) {
-    contextHint.textContent = `${stagedFiles.length} context file${stagedFiles.length === 1 ? '' : 's'} included.`;
+    contextHint.textContent = `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} will be included in this scope workflow.`;
   } else {
-    contextHint.textContent = 'Optional: specs, notes, or data that materially change the scope.';
+    contextHint.textContent = 'Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, and CSV are supported.';
   }
 }
 

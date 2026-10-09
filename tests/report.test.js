@@ -94,9 +94,9 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /id="connectionsButton"/);
   assert.match(html, /id="connectionsDialog"/);
   assert.match(html, /Open implementation decision/);
-  assert.match(html, /Attach files/);
+  assert.match(html, /Choose files/);
   assert.match(app, /Live scope report/);
-  assert.match(app, /Optional: specs, notes, or data that materially change the scope/);
+  assert.match(app, /Text, Markdown, JSON, and CSV are supported/);
   assert.match(app, /Before build: define the categories/);
   assert.match(app, /renderScenarios/);
   assert.match(app, /analyzeSelectedScenario/);
