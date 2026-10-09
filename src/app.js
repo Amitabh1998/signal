@@ -616,7 +616,6 @@ function renderReport(report) {
   $('#confidenceValue').textContent = `${recommendation.confidence}%`;
   $('#confidenceBar').style.width = `${recommendation.confidence}%`;
   $('#evidenceCount').textContent = `${recommendation.supportingEvidence} supporting · ${recommendation.challengingEvidence} challenging`;
-  $('.momentum-score strong').textContent = recommendation.confidence;
   $('#contradictionTitle').textContent = contradiction.title;
   $('#contradictionBody').textContent = contradiction.body;
   $('#evidenceVersus').innerHTML = `<div class="versus-quote">${escapeHtml(contradiction.forQuote)}</div><span class="versus-mark">VERSUS</span><div class="versus-quote">${escapeHtml(contradiction.againstQuote)}</div>`;

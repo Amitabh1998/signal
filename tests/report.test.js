@@ -111,6 +111,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /renderAttachmentList/);
   assert.match(app, /handleFileSelection/);
   assert.match(app, /syncScopeAction/);
+  assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {
