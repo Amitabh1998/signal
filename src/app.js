@@ -81,6 +81,7 @@ function renderFactoryEmpty() {
   $('#localBriefContext').textContent = '';
   attachedFiles = [];
   renderAttachmentList();
+  $('#scopeRunNotice').hidden = true;
   $('.factory-output').hidden = true;
   $('#buildMission').hidden = true;
   $('#missionState').classList.remove('created');
@@ -336,34 +337,20 @@ async function beginRunnerLogin(runner) {
 
 function renderSources(sources) {
   displayedSources = sources;
-  $('#sourceList').innerHTML = sources.map((source, index) => `
-    <button class="source-item ${index === 0 ? 'active' : ''}" type="button" data-source-index="${index}" aria-label="View ${escapeHtml(source.name)}">
-      <span class="source-icon">${escapeHtml(sourceKindLabel(source))}</span>
-      <span class="source-copy"><strong>${escapeHtml(source.name)}</strong><span>${escapeHtml(source.meta)}</span></span>
-      <span class="source-status ${escapeHtml(source.status)}"></span>
-    </button>
-  `).join('');
   const stagedFiles = sources.filter(source => source.contentStatus === 'staged');
-  const status = $('#sourceDrawerStatus');
-  if (status) {
-    status.textContent = stagedFiles.length
-      ? `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} staged locally.`
-      : 'No files attached.';
-  }
   const contextHint = $('#contextHint');
-  const contextAttachment = $('#contextAttachment');
   if (stagedFiles.length) {
-    contextHint.textContent = 'Ready for the scope workflow.';
-    contextAttachment.hidden = false;
-    contextAttachment.textContent = `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} attached`;
+    contextHint.textContent = `${stagedFiles.length} context file${stagedFiles.length === 1 ? '' : 's'} included.`;
   } else {
     contextHint.textContent = 'Only add files that change the scope.';
-    contextAttachment.hidden = true;
-    contextAttachment.textContent = '';
   }
-  document.querySelectorAll('.source-item').forEach(button => {
-    button.addEventListener('click', () => openEvidenceSource(displayedSources[Number(button.dataset.sourceIndex)]));
-  });
+}
+
+function setScopeRunNotice(message = '', state = '') {
+  const notice = $('#scopeRunNotice');
+  notice.hidden = !message;
+  notice.textContent = message;
+  notice.className = `scope-run-notice ${state}`.trim();
 }
 
 function renderScenarioOutcome(scenario) {
@@ -875,11 +862,11 @@ async function runLiveAnalysis(event) {
   const previous = button.innerHTML;
   button.disabled = true;
   button.innerHTML = '<span>◈</span> Running RocketRide';
+  setScopeRunNotice('RocketRide is reading the request and context. The scope report will open when it is ready.', 'running');
   $('#engineStatus').className = 'engine-status stale';
   $('#engineStatus strong').textContent = 'RocketRide live run in progress';
   $('#engineStatus span').textContent = 'The browser is calling the local dev server, which calls the RocketRide runner.';
   $('#engineStatus code').textContent = 'running';
-  scrollToReview();
   setFactoryRoleState('running');
   renderPipeline(rocketRidePipeline, 'running');
 
@@ -912,15 +899,21 @@ async function runLiveAnalysis(event) {
     $('#engineStatus code').textContent = 'live run';
     setFactoryRoleState('complete');
     setProofMode(true);
+    setScopeRunNotice('Scope report ready. Opening the decision for review.', 'complete');
     showToast('RocketRide live run complete. Proof Mode is showing the claims tied to evidence.');
   } catch (error) {
+    const technicalMessage = error instanceof Error ? error.message : 'The RocketRide scope run failed.';
+    const message = /Failed to connect to ws:\/\/localhost:5565/i.test(technicalMessage)
+      ? 'RocketRide is offline on this Mac. Start the local engine, then run the workflow again.'
+      : technicalMessage;
     renderPipeline(currentReport.mode === 'live' ? rocketRidePipeline : currentReport.pipeline, 'done');
     $('#engineStatus').className = 'engine-status failed';
     $('#engineStatus strong').textContent = 'RocketRide live run failed';
-    $('#engineStatus span').textContent = 'No fallback report was created. Check engine URL, auth, and ROCKETRIDE_OPENAI_KEY.';
+    $('#engineStatus span').textContent = message;
     $('#engineStatus code').textContent = 'failed';
     setFactoryRoleState('failed');
-    showToast(error.message, 8000);
+    setScopeRunNotice(`RocketRide could not complete this scope run: ${message}`, 'failed');
+    showToast(message, 8000);
   } finally {
     button.disabled = false;
     button.innerHTML = previous;
@@ -982,7 +975,6 @@ async function addUnanalyzedFiles(files) {
   const allStagedSources = [...displayedSources.filter(source => source.contentStatus === 'staged'), ...added];
   stagedEvidenceText = allStagedSources.map(source => `SOURCE: ${source.name}\n${source.content}`).join('\n\n');
   renderSources([...displayedSources, ...added]);
-  $('.source-drawer').open = true;
   if (!$('.factory-output').hidden) renderPreparedInputs();
   $('#scenarioOutcomeTitle').textContent = 'Custom evidence staged';
   $('#scenarioOutcomeBody').textContent = 'Run RocketRide to generate a real outcome from these files. The UI will not invent an answer from uploaded evidence.';

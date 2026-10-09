@@ -56,23 +56,18 @@
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" aria-describedby="requestValidation" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <p class="request-validation" id="requestValidation">Describe the microapp you want to build to run the scope workflow.</p>
               <div class="context-row">
-                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" onchange="document.getElementById('nativeFileSelection').hidden = !this.files.length; document.getElementById('nativeFileSelection').textContent = [...this.files].map(file => file.name).join(', ');" />
+                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
                 <span id="contextHint">Only add files that change the scope.</span>
-                <span class="context-attachment" id="contextAttachment" hidden></span>
               </div>
-              <output class="native-file-selection" id="nativeFileSelection" aria-live="polite" hidden></output>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
-                <strong>Attached files</strong>
+                <strong>Context included in this scope run</strong>
                 <ul id="attachmentListItems"></ul>
               </section>
-              <details class="source-drawer">
-                <summary>Attached context <span id="sourceDrawerStatus">No files attached.</span></summary>
-                <div class="source-list" id="sourceList"></div>
-              </details>
               <div class="factory-actions">
                 <button class="button button-primary" id="factoryGenerateButton" type="button" disabled><span>◈</span> Run scope workflow</button>
                 <button class="button button-ghost" id="factoryClearButton" type="button">Clear</button>
               </div>
+              <p class="scope-run-notice" id="scopeRunNotice" aria-live="polite" hidden></p>
               <p class="brief-footnote">RocketRide uses this request and the selected context to produce the scope decision.</p>
             </div>
             <aside class="delivery-line" aria-label="Software factory stages">
