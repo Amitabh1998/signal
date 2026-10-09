@@ -55,9 +55,9 @@
               <label for="factoryIdeaInput">Product request</label>
               <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
               <div class="context-row">
-                <button class="text-button" id="uploadTrigger" type="button">Attach context</button>
+                <label class="text-button" for="fileInput">Attach context</label>
                 <span>Only add files that change the scope.</span>
-                <input id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" hidden />
+                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" />
               </div>
               <details class="source-drawer">
                 <summary>Attached context <span id="sourceDrawerStatus">No files attached.</span></summary>

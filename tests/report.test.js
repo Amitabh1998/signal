@@ -76,6 +76,8 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.match(html, /id="tourButton"/);
   assert.match(html, /id="factoryIdeaInput"/);
+  assert.match(html, /<label class="text-button" for="fileInput">Attach context<\/label>/);
+  assert.match(html, /class="file-input" id="fileInput" type="file"/);
   assert.match(html, /id="factoryGenerateButton"/);
   assert.match(html, /id="scenarioList"/);
   assert.match(html, /id="reviewWorkspace"/);
@@ -100,6 +102,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /No scope, requirements, risks, or technical plan has been generated yet/);
   assert.match(app, /scopeReportReady = report.mode === 'live'/);
   assert.doesNotMatch(app, /generateFactoryBlueprint/);
+  assert.doesNotMatch(app, /uploadTrigger/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {

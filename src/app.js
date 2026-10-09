@@ -953,7 +953,6 @@ $('#loadLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#openLatestLiveButton').addEventListener('click', loadLocalLiveReport);
 $('#importButton').addEventListener('click', () => $('#reportInput').click());
 $('#reportInput').addEventListener('change', event => event.target.files[0] && importReport(event.target.files[0]));
-$('#uploadTrigger').addEventListener('click', () => $('#fileInput').click());
 $('#fileInput').addEventListener('change', event => addUnanalyzedFiles(event.target.files));
 $('#dismissTruth').addEventListener('click', () => { $('#truthBanner').hidden = true; });
 $('[data-open-trace]').addEventListener('click', () => $('#traceDialog').showModal());
