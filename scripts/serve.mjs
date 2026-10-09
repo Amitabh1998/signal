@@ -9,6 +9,7 @@ const root = new URL('../', import.meta.url).pathname;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 const maxBodyBytes = 1_000_000;
 const executions = new Map();
+let scopeWorkflowRunning = false;
 
 async function loadDotEnv(filepath) {
   try {
@@ -120,6 +121,16 @@ async function readBody(request) {
 }
 
 async function runAnalyzeApi(request, response) {
+  if (scopeWorkflowRunning) {
+    sendJson(response, 409, {
+      ok: false,
+      code: 'scope-workflow-running',
+      message: 'A RocketRide scope workflow is already running. Wait for that decision before starting another one.'
+    });
+    return;
+  }
+
+  scopeWorkflowRunning = true;
   try {
     const raw = await readBody(request);
     const parsed = raw.trim() ? JSON.parse(raw) : {};
@@ -161,6 +172,8 @@ async function runAnalyzeApi(request, response) {
       ok: false,
       message: error instanceof Error ? error.message : String(error)
     });
+  } finally {
+    scopeWorkflowRunning = false;
   }
 }
 

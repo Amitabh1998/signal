@@ -878,6 +878,9 @@ async function runLiveAnalysis(event) {
       body: JSON.stringify({ evidence })
     });
     const payload = await response.json();
+    if (response.status === 409 && payload.code === 'scope-workflow-running') {
+      throw new Error(payload.message);
+    }
     if (!response.ok || !payload.ok) {
       throw new Error(payload.stderr || payload.message || 'RocketRide run failed.');
     }

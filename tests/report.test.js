@@ -112,6 +112,10 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /syncScopeAction/);
   assert.match(app, /setScopeRunNotice/);
   assert.match(app, /RocketRide is offline on this Mac/);
+  assert.match(app, /scope-workflow-running/);
+  const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
+  assert.match(server, /scopeWorkflowRunning/);
+  assert.match(server, /scope-workflow-running/);
   assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
 });
 
