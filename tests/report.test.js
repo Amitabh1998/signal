@@ -78,6 +78,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /id="factoryIdeaInput"/);
   assert.match(html, /class="file-input" id="fileInput" type="file"/);
   assert.match(html, /id="contextAttachment" hidden/);
+  assert.match(html, /id="attachmentList" aria-live="polite" hidden/);
   assert.match(html, /id="factoryGenerateButton"/);
   assert.match(html, /id="scenarioList"/);
   assert.match(html, /id="reviewWorkspace"/);
@@ -104,6 +105,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.doesNotMatch(app, /generateFactoryBlueprint/);
   assert.match(app, /allStagedSources/);
   assert.match(app, /\$\('\.source-drawer'\)\.open = true/);
+  assert.match(app, /renderAttachmentList/);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {

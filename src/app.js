@@ -9,6 +9,7 @@ let localLiveReport;
 let tourIndex = 0;
 let displayedSources = [];
 let stagedEvidenceText = '';
+let attachedFiles = [];
 let proofMode = true;
 let currentMission;
 let executionPoll;
@@ -35,6 +36,18 @@ function escapeHtml(value) {
 function sourceKindLabel(source) {
   // A person-named source is evidence, not a RocketRide specialist role.
   return String(source.kind || 'SOURCE').toUpperCase() === 'AGENT' ? 'CALL' : String(source.kind || 'SOURCE').toUpperCase();
+}
+
+function renderAttachmentList() {
+  const list = $('#attachmentList');
+  const items = $('#attachmentListItems');
+  list.hidden = attachedFiles.length === 0;
+  items.innerHTML = attachedFiles.map(file => `
+    <li class="attachment-file ${escapeHtml(file.status)}">
+      <span>${escapeHtml(file.name)}</span>
+      <small>${escapeHtml(file.detail)}</small>
+    </li>
+  `).join('');
 }
 
 function missionTitleFromRequest(request) {
@@ -66,6 +79,8 @@ function renderFactoryEmpty() {
   $('#factoryArtifactCount').textContent = '00';
   $('#localBriefRequest').textContent = '';
   $('#localBriefContext').textContent = '';
+  attachedFiles = [];
+  renderAttachmentList();
   $('.factory-output').hidden = true;
   $('#buildMission').hidden = true;
   $('#missionState').classList.remove('created');
@@ -922,15 +937,41 @@ async function importReport(file) {
 
 async function addUnanalyzedFiles(files) {
   if (!files.length) return;
-  const added = await Promise.all([...files].map(async (file, index) => ({
-    id: `local_${Date.now()}_${index}`,
-    kind: file.name.split('.').pop()?.slice(0, 4).toUpperCase() || 'FILE',
+  const selected = [...files];
+  const selectedStates = selected.map(file => ({
     name: file.name,
-    meta: `${Math.max(1, Math.round(file.size / 1024))} KB · not analyzed`,
-    content: (await file.text()).slice(0, 100000),
-    contentStatus: 'staged',
-    status: 'pending'
-  })));
+    detail: 'Reading file…',
+    status: 'reading'
+  }));
+  attachedFiles = [...attachedFiles, ...selectedStates];
+  renderAttachmentList();
+
+  let added;
+  try {
+    added = await Promise.all(selected.map(async (file, index) => ({
+      id: `local_${Date.now()}_${index}`,
+      kind: file.name.split('.').pop()?.slice(0, 4).toUpperCase() || 'FILE',
+      name: file.name,
+      meta: `${Math.max(1, Math.round(file.size / 1024))} KB · not analyzed`,
+      content: (await file.text()).slice(0, 100000),
+      contentStatus: 'staged',
+      status: 'pending'
+    })));
+  } catch (error) {
+    selectedStates.forEach(file => {
+      file.detail = 'Could not read this file';
+      file.status = 'failed';
+    });
+    renderAttachmentList();
+    showToast(error instanceof Error ? error.message : 'Signal could not read the selected file.', 7000);
+    return;
+  }
+
+  selectedStates.forEach(file => {
+    file.detail = 'Ready for scope workflow';
+    file.status = 'ready';
+  });
+  renderAttachmentList();
   const allStagedSources = [...displayedSources.filter(source => source.contentStatus === 'staged'), ...added];
   stagedEvidenceText = allStagedSources.map(source => `SOURCE: ${source.name}\n${source.content}`).join('\n\n');
   renderSources([...displayedSources, ...added]);

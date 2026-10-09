@@ -2171,6 +2171,43 @@ h3 { text-wrap: balance; scroll-margin-top: 86px; }
   font-size: 11px;
   font-weight: 700;
 }
+.attachment-list {
+  margin: 10px 0 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.attachment-list[hidden] { display: none; }
+.attachment-list > strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+.attachment-list ul {
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  list-style: none;
+}
+.attachment-file {
+  min-height: 31px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #334155;
+  border: 1px solid #dbe7f5;
+  border-radius: 4px;
+  background: #fbfdff;
+  font-size: 11px;
+}
+.attachment-file small { color: #64748b; font-size: 10px; }
+.attachment-file.reading { border-color: #bfdbfe; background: #eff6ff; }
+.attachment-file.ready { border-color: #b9d5d1; background: #f3f9f8; }
+.attachment-file.ready small { color: #075d5c; }
+.attachment-file.failed { border-color: #fecaca; background: #fff8f7; }
+.attachment-file.failed small { color: #9d4141; }
 .file-input {
   width: 142px;
   height: 34px;
