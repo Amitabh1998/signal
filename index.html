@@ -193,8 +193,8 @@
           <div class="review-heading">
             <div>
               <span class="eyebrow">Review decision</span>
-              <h2 id="reviewTitle">Recommendation and proof</h2>
-              <p>RocketRide runs the configured scope workflow over the brief and optional files. It reconciles three specialist roles into a decision with evidence, challenges, and proof for review.</p>
+              <h2 id="reviewTitle">Scope decision</h2>
+              <p>RocketRide reconciles the request and attached context into a reviewable decision. Inspect the recommendation and proof, then decide whether to create a build mission.</p>
             </div>
             <div class="header-actions">
             <button class="button button-ghost" id="loadLiveButton" hidden>
@@ -229,8 +229,8 @@
         <section class="factory-operators" aria-labelledby="factoryOperatorsTitle">
           <div class="factory-operators-heading">
             <div>
-              <h3 id="factoryOperatorsTitle">Who works this scope</h3>
-              <p>RocketRide runs this configured workflow. These are specialist LLM roles with bounded jobs, not independent coding agents.</p>
+              <h3 id="factoryOperatorsTitle">Who shaped this scope</h3>
+              <p>Three bounded LLM roles work in parallel. RocketRide then reconciles and validates their output; the coding runner starts only after you create a build mission.</p>
             </div>
             <span id="factoryRunState" aria-live="polite">Awaiting a scope run</span>
           </div>
@@ -239,7 +239,6 @@
             <li class="factory-operator role" data-factory-role="skeptic"><span>Skeptic</span><p>Surfaces counter-evidence, uncertainty, and scope risk.</p><em>Specialist role</em></li>
             <li class="factory-operator role" data-factory-role="strategist"><span>Product Strategist</span><p>Proposes the smallest reversible product decision.</p><em>Specialist role</em></li>
             <li class="factory-operator system" data-factory-role="synthesis"><span>RocketRide synthesis</span><p>Reconciles the roles, validates the report, and links proof.</p><em>System step</em></li>
-            <li class="factory-operator runner" data-factory-role="runner"><span>Configured coding runner</span><p>Starts only after approval, inside an isolated branch.</p><em>Execution stage</em></li>
           </ol>
         </section>
 
@@ -248,7 +247,7 @@
             <strong>RocketRide scope workflow</strong>
             <span class="runtime" id="runtimeLabel">demo result</span>
           </div>
-          <p class="pipeline-explainer">The three specialist roles run in parallel. Reading, synthesis, commitment checks, and proof linking are workflow steps run by RocketRide.</p>
+          <p class="pipeline-explainer">Recorded workflow steps for this scope run.</p>
           <div class="pipeline" id="pipeline"></div>
         </section>
 
@@ -279,11 +278,13 @@
               </button>
             </article>
 
-            <div class="section-label">
-              <span>Evidence-backed signals</span>
-              <span id="signalCount">03 signals</span>
-            </div>
-            <div class="signal-list" id="signalList"></div>
+            <section class="signals-section" id="signalsSection">
+              <div class="section-label">
+                <span>Evidence-backed signals</span>
+                <span id="signalCount">03 signals</span>
+              </div>
+              <div class="signal-list" id="signalList"></div>
+            </section>
 
             <article class="contradiction-card reveal-card" id="contradictionCard">
               <div class="contradiction-icon">≠</div>
@@ -311,28 +312,6 @@
           </section>
 
           <aside class="insight-column">
-            <section class="panel momentum-panel">
-              <div class="panel-heading">
-                <span class="eyebrow">Decision momentum</span>
-                <span class="delta">+12%</span>
-              </div>
-              <div class="momentum-score"><strong>84</strong><span>/ 100</span></div>
-              <svg class="sparkline" viewBox="0 0 280 80" role="img" aria-label="Confidence increased over four evidence drops">
-                <path class="spark-area" d="M0 64 C38 61 42 50 76 52 S127 57 155 37 S205 43 231 22 S260 20 280 9 L280 80 L0 80 Z" />
-                <path class="spark-line" d="M0 64 C38 61 42 50 76 52 S127 57 155 37 S205 43 231 22 S260 20 280 9" />
-                <circle cx="280" cy="9" r="4" />
-              </svg>
-              <div class="spark-labels"><span>Sep 12</span><span>4 evidence drops</span><span>Today</span></div>
-            </section>
-
-            <section class="panel lenses-panel">
-              <div class="panel-heading">
-                <span class="eyebrow">Specialist lenses</span>
-                <span>3 / 3 agree</span>
-              </div>
-              <div class="lens-list" id="lensList"></div>
-            </section>
-
             <section class="panel proof-panel active" id="proofPanel">
               <div class="panel-heading">
                 <span class="eyebrow">Proof mode</span>

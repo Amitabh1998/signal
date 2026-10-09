@@ -181,11 +181,9 @@ function setFactoryRoleState(status = 'idle') {
   const state = $('#factoryRunState');
   if (state) state.textContent = copy[status] || copy.idle;
   document.querySelectorAll('[data-factory-role]').forEach(item => {
-    const role = item.dataset.factoryRole;
-    const participates = role !== 'runner';
-    item.classList.toggle('working', status === 'running' && participates);
-    item.classList.toggle('complete', status === 'complete' && participates);
-    item.classList.toggle('blocked', status === 'failed' && participates);
+    item.classList.toggle('working', status === 'running');
+    item.classList.toggle('complete', status === 'complete');
+    item.classList.toggle('blocked', status === 'failed');
   });
 }
 
@@ -408,6 +406,7 @@ function openEvidenceSource(source) {
 }
 
 function renderSignals(signals) {
+  $('#signalsSection').hidden = signals.length === 0;
   $('#signalList').innerHTML = signals.map(signal => `
     <article class="signal-card reveal-card">
       <div class="signal-top"><span>${escapeHtml(signal.index)}</span><b>${escapeHtml(signal.strength)}</b></div>
@@ -420,17 +419,6 @@ function renderSignals(signals) {
     </article>
   `).join('');
   $('#signalCount').textContent = `${String(signals.length).padStart(2, '0')} signals`;
-}
-
-function renderLenses(lenses) {
-  $('#lensList').innerHTML = lenses.map(lens => `
-    <div class="lens-row">
-      <span class="lens-avatar">${escapeHtml(lens.initials)}</span>
-      <span class="lens-copy"><strong>${escapeHtml(lens.name)}</strong><span>${escapeHtml(lens.note)}</span></span>
-      <span class="lens-vote">${escapeHtml(lens.vote)}</span>
-    </div>
-  `).join('');
-  $('.lenses-panel .panel-heading span:last-child').textContent = `${lenses.length} lenses`;
 }
 
 function renderPipeline(pipeline, state = 'done') {
@@ -606,7 +594,6 @@ function renderReport(report) {
   $('#reportId').textContent = report.reportId;
   renderSources(report.sources);
   renderSignals(report.signals);
-  renderLenses(report.lenses);
   renderPipeline(isLive ? rocketRidePipeline : report.pipeline, 'done');
   renderPromises(report.promises || []);
   renderProofs(report.proofs || []);
@@ -881,6 +868,7 @@ async function runLiveAnalysis(event) {
       brief
     };
     scopeReportReady = report.mode === 'live';
+    $('#loadLiveButton').hidden = true;
     showReportTruth(report, 'local');
     scrollToReview();
     $('#engineStatus').className = 'engine-status healthy';
