@@ -1,0 +1,25 @@
+{
+  "name": "signal-room",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An evidence-backed product decision room powered by RocketRide.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test",
+    "eval": "node scripts/eval.mjs",
+    "seed:scenario": "node scripts/seed-scenario.mjs",
+    "sources:demo": "node scripts/generate-demo-source-pack.mjs",
+    "demo:record": "node scripts/create-demo-recording.mjs",
+    "analyze:live": "node scripts/rocketride-run.mjs",
+    "delivery-review:live": "node scripts/rocketride-delivery-review.mjs",
+    "rocketride:check": "node scripts/rocketride-check.mjs"
+  },
+  "dependencies": {
+    "rocketride": "1.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

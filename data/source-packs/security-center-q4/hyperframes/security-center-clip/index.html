@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=1080, initial-scale=1" />
+    <title>Signal Room Security Center Clip</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@500;700;800&display=swap');
+      * { box-sizing: border-box; }
+      body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; color: #f2f3ee; background: #07100b; font-family: Manrope, sans-serif; }
+      .stage { position: relative; width: 1080px; height: 1920px; padding: 94px 76px; background: radial-gradient(circle at 75% 18%, rgba(184,255,61,.2), transparent 28%), linear-gradient(180deg, #0f1712, #060a08); }
+      .brand { display: flex; align-items: center; gap: 18px; color: #c9ff4a; font: 500 24px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .08em; }
+      .mark { width: 42px; height: 42px; border: 1px solid #c9ff4a; transform: rotate(45deg); }
+      .clip { position: absolute; left: 76px; right: 76px; opacity: 0; transform: translateY(28px); animation: enter .6s ease forwards; }
+      .hero { top: 210px; }
+      .hero h1 { margin: 28px 0 0; font-size: 94px; line-height: .98; letter-spacing: -.06em; }
+      .hero p { width: 820px; margin: 28px 0 0; color: #aab4aa; font-size: 33px; line-height: 1.45; }
+      .evidence { top: 800px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; animation-delay: 2.4s; }
+      .card { min-height: 188px; padding: 28px; border: 1px solid #2a382e; border-radius: 22px; background: rgba(17,25,19,.82); }
+      .card b { display: block; color: #c9ff4a; font: 500 22px 'DM Mono', monospace; text-transform: uppercase; }
+      .card span { display: block; margin-top: 24px; font-size: 32px; line-height: 1.22; }
+      .decision { top: 1290px; padding: 34px; border: 1px solid rgba(201,255,74,.42); border-radius: 28px; background: linear-gradient(145deg, rgba(201,255,74,.14), rgba(17,25,19,.9)); animation-delay: 5.2s; }
+      .decision small { color: #c9ff4a; font: 500 22px 'DM Mono', monospace; text-transform: uppercase; }
+      .decision h2 { margin: 22px 0 0; font-size: 62px; line-height: 1.05; letter-spacing: -.05em; }
+      .footer { bottom: 80px; color: #788278; font: 500 23px 'DM Mono', monospace; animation-delay: 7.8s; }
+      @keyframes enter { to { opacity: 1; transform: translateY(0); } }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <div class="brand"><i class="mark"></i><span>Signal Room</span></div>
+      <section class="clip hero" data-start="0" data-duration="3" data-track-index="1">
+        <h1>The integration backlog is loud.</h1>
+        <p>But the bigger deals are blocked by security review.</p>
+      </section>
+      <section class="clip evidence" data-start="2.4" data-duration="3" data-track-index="2">
+        <article class="card"><b>Security proof</b><span>$1.8M pipeline blocked by audit logs, retention, and SCIM.</span></article>
+        <article class="card"><b>Integrations</b><span>$410K influenced by Jira and webhook requests.</span></article>
+        <article class="card"><b>Customer quote</b><span>"Jira is useful later. It is not the approval blocker."</span></article>
+        <article class="card"><b>Ticket signal</b><span>7 audit-log requests vs 2 Jira requests in the blocker export.</span></article>
+      </section>
+      <section class="clip decision" data-start="5.2" data-duration="2.6" data-track-index="3">
+        <small>Recommended bet</small>
+        <h2>Build an audit-ready Security Center before another integration.</h2>
+      </section>
+      <div class="clip footer" data-start="7.8" data-duration="1.2" data-track-index="4">Evidence -> conflict -> defensible decision</div>
+    </main>
+  </body>
+</html>

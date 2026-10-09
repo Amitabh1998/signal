@@ -1,0 +1,14 @@
+SOURCE: Nadia - Finlytics
+Nadia: "We like the workflow coverage, but I cannot approve rollout until admins can export access logs and prove who touched customer data."
+
+SOURCE: Marcus - HelioBank
+Marcus: "The Salesforce integration is nice, but our security committee asked about retention, audit trails, and SCIM before they asked about any new app."
+
+SOURCE: Enterprise blockers #7
+Seven tickets request audit logs. Four ask about retention controls. Three ask for SCIM. Two request a Jira integration.
+
+SOURCE: Deal review board
+Security review was named as the primary blocker in 11 opportunities worth $1.8M pipeline. Missing integrations were named primary in 3 opportunities worth $410K.
+
+SOURCE: Solutions feedback
+Solutions engineering can answer integration gaps manually, but audit evidence requires product support because screenshots are not accepted by reviewers.

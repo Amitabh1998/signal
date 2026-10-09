@@ -1,0 +1,14 @@
+SOURCE: Maya - Northstar
+Maya: "I stopped at the roles screen because I was not sure if changing a default would lock the rest of my team out. I wanted something that said: start here, you can change it later."
+
+SOURCE: Jon - Pilot Labs
+Jon: "We absolutely need granular permissions eventually, but the first setup had too many decisions. I copied another team's workspace because I did not know what good looked like."
+
+SOURCE: Support digest #42
+Six tickets ask whether permission changes are reversible. Four request recommended defaults. Three request more granular roles. The remaining five are unrelated to permissions.
+
+SOURCE: Activation cohorts
+Preset workspaces reached a first shared project in a median of 1.7 days; custom-setup workspaces took 3.1 days. This sample is observational and may be confounded by team maturity and size.
+
+SOURCE: Sales objections
+Four enterprise prospects requested more granular roles before procurement. They are not active customers and are not treated as activation evidence.

@@ -1,0 +1,22 @@
+{
+  "scenarios": [
+    {
+      "id": "activation-permissions",
+      "file": "activation-permissions.txt",
+      "audience": "Product and growth leaders",
+      "expectedOutcome": "Guided permissions setup"
+    },
+    {
+      "id": "pricing-packaging",
+      "file": "pricing-packaging.txt",
+      "audience": "Founder, product, sales, and pricing leaders",
+      "expectedOutcome": "Capped starter plan experiment"
+    },
+    {
+      "id": "enterprise-security",
+      "file": "enterprise-security.txt",
+      "audience": "Founder, enterprise GTM, security, and platform leaders",
+      "expectedOutcome": "Audit-ready security center"
+    }
+  ]
+}

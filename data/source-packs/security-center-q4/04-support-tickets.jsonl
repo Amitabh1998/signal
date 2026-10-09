@@ -1,0 +1,6 @@
+{"id":"TCK-1842","account":"Finlytics","type":"security","priority":"P0","status":"blocked","evidence":"Need exportable access logs before rollout approval.","revenueRisk":420000}
+{"id":"TCK-1845","account":"HelioBank","type":"security","priority":"P0","status":"blocked","evidence":"Security committee asked for retention, SCIM, and audit trails.","revenueRisk":310000}
+{"id":"TCK-1851","account":"Northstar Risk","type":"integration","priority":"P2","status":"open","evidence":"Requester asked for Jira issue sync to reduce manual handoff.","revenueRisk":90000}
+{"id":"TCK-1854","account":"Arcade Cloud","type":"security","priority":"P1","status":"open","evidence":"Admin needs role-change history for quarterly audit.","revenueRisk":180000}
+{"id":"TCK-1860","account":"OrbitOps","type":"integration","priority":"P2","status":"open","evidence":"Zendesk webhook requested by support operations.","revenueRisk":70000}
+{"id":"TCK-1864","account":"Kestrel Finance","type":"security","priority":"P0","status":"blocked","evidence":"SOC2 reviewer rejected screenshot-based audit evidence.","revenueRisk":260000}

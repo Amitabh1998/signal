@@ -1,0 +1,20 @@
+SOURCE: Customer interview — Maya, Northstar — 2026-09-18
+Maya: "I stopped at the roles screen because I wasn't sure if changing a default would lock the rest of my team out. I wanted something that said: start here, you can change it later."
+
+SOURCE: Customer interview — Jon, Pilot Labs — 2026-09-22
+Jon: "We absolutely need granular permissions eventually, but the first setup had too many decisions. I copied another team's workspace because I didn't know what good looked like."
+
+SOURCE: Customer interview — Lina, Formworks — 2026-09-25
+Lina: "A template for an agency team would have saved us a call with support. After the first week, we did want more control."
+
+SOURCE: Support digest #42 — 18 tickets sampled — 2026-10-03
+Six tickets ask whether permission changes are reversible. Four request recommended defaults. Three request more granular roles. The remaining five are unrelated to permissions.
+
+SOURCE: Activation cohort export — 2,840 workspaces — 2026-09-01 to 2026-09-30
+Workspaces that selected a preset reached a first shared project in a median of 1.7 days. Workspaces using custom setup reached it in a median of 3.1 days. This is observational data, not a randomized experiment; team maturity and size may confound the result.
+
+SOURCE: Sales objection notes — Q4 planning
+Four enterprise prospects requested more granular roles before procurement. These prospects are not yet active customers and should not be treated as activation evidence.
+
+TASK
+Based only on the evidence above, identify the most defensible next product bet, the strongest contradiction, and the smallest reversible experiment. Preserve uncertainty and source provenance.

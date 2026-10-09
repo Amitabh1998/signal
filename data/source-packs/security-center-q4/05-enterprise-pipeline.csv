@@ -1,0 +1,9 @@
+Opportunity,Account,Segment,ARR,Primary blocker,Requested feature,Stage,Owner
+OPP-901,Finlytics,Enterprise,420000,Security review,Access-log export,Security review,Rowan
+OPP-914,HelioBank,Enterprise,310000,Security review,Retention controls,Security review,Priya
+OPP-922,Northstar Risk,Enterprise,90000,Missing integration,Jira sync,Technical validation,Sam
+OPP-936,Kestrel Finance,Enterprise,260000,Security review,Audit evidence hub,Legal/security,Ira
+OPP-941,BrightCart,Mid-market,70000,Missing integration,Zendesk webhook,Business case,Noor
+OPP-948,Cobalt Health,Enterprise,190000,Security review,SCIM status page,Security review,Rowan
+OPP-955,ClearLedger,Enterprise,230000,Security review,Role-change history,Procurement,Mina
+OPP-963,OrbitOps,Mid-market,250000,Missing integration,Jira sync,Technical validation,Sam

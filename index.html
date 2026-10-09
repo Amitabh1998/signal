@@ -3,419 +3,492 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#f4f7f6" />
     <meta
       name="description"
-      content="A tiny train dispatcher. Click anywhere to send a train chugging across the screen."
+      content="Signal turns a product brief and optional context into a reviewable build mission."
     />
-    <meta property="og:title" content="welcome to conductor" />
-    <meta property="og:description" content="Click anywhere to dispatch a train." />
-    <meta property="og:type" content="website" />
-    <link rel="icon" type="image/png" href="./public/favicon.png" />
-    <title>welcome to conductor</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --ink: #151515;
-        --muted: #7a7a7a;
-        --faint: #d9d9d9;
-        --paper: #fbfbfa;
-        --panel: rgba(255, 255, 255, 0.72);
-        --accent: #111;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        min-height: 100%;
-      }
-
-      body {
-        margin: 0;
-        overflow: hidden;
-        background: var(--paper);
-        color: var(--ink);
-        font-family:
-          ui-sans-serif,
-          -apple-system,
-          BlinkMacSystemFont,
-          "SF Pro Text",
-          "Helvetica Neue",
-          Helvetica,
-          Arial,
-          sans-serif;
-        font-feature-settings: "kern";
-      }
-
-      main {
-        position: relative;
-        display: block;
-        width: 100vw;
-        min-height: 100svh;
-        overflow: hidden;
-        cursor: pointer;
-        user-select: none;
-        -webkit-tap-highlight-color: transparent;
-      }
-
-      .hero {
-        position: absolute;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        gap: 18px;
-        padding: 32px;
-        text-align: center;
-        transition: opacity 600ms ease;
-        pointer-events: none;
-      }
-
-      .hero.dispatched {
-        opacity: 0;
-      }
-
-      .hero-inner {
-        display: grid;
-        gap: 18px;
-        place-items: center;
-      }
-
-      .train-emoji {
-        display: inline-block;
-        font-size: clamp(56px, 10vw, 96px);
-        line-height: 1;
-        transform-origin: 50% 60%;
-        pointer-events: auto;
-      }
-
-      .train-emoji:hover {
-        animation: wiggle 600ms ease-in-out;
-      }
-
-      .tagline {
-        max-width: 28ch;
-        color: var(--muted);
-        font-size: 14px;
-        font-weight: 450;
-        letter-spacing: 0;
-        line-height: 1.5;
-      }
-
-      .train {
-        position: fixed;
-        left: 0;
-        z-index: 1;
-        font-size: clamp(38px, 6vw, 56px);
-        line-height: 1;
-        pointer-events: none;
-        animation-fill-mode: forwards;
-        animation-timing-function: linear;
-        will-change: transform;
-      }
-
-      .train.ltr {
-        animation-name: train-ltr;
-      }
-
-      .train.rtl {
-        animation-name: train-rtl;
-      }
-
-      .steam {
-        position: fixed;
-        z-index: 0;
-        color: #c9c9c7;
-        font-size: 18px;
-        pointer-events: none;
-        animation: puff 1400ms ease-out forwards;
-        will-change: transform, opacity;
-      }
-
-      .mute-toggle {
-        position: fixed;
-        top: 16px;
-        right: 16px;
-        z-index: 10;
-        display: inline-flex;
-        width: 38px;
-        height: 38px;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--faint);
-        border-radius: 999px;
-        background: var(--panel);
-        color: var(--ink);
-        cursor: pointer;
-        font-size: 16px;
-        backdrop-filter: blur(14px);
-        transition:
-          border-color 150ms ease,
-          background 150ms ease,
-          transform 150ms ease;
-      }
-
-      .mute-toggle:hover {
-        background: #fff;
-        border-color: #b8b8b8;
-        transform: translateY(-1px);
-      }
-
-      .mute-toggle:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 3px;
-      }
-
-      .counter {
-        position: fixed;
-        bottom: 16px;
-        left: 16px;
-        z-index: 10;
-        color: var(--muted);
-        font-size: 13px;
-        font-weight: 450;
-        letter-spacing: 0;
-        pointer-events: none;
-      }
-
-      @keyframes wiggle {
-        0%,
-        100% {
-          transform: rotate(0);
-        }
-
-        25% {
-          transform: translateY(-4px) rotate(-6deg);
-        }
-
-        75% {
-          transform: translateY(-4px) rotate(6deg);
-        }
-      }
-
-      @keyframes train-ltr {
-        from {
-          transform: translateX(-15vw) scaleX(-1);
-        }
-
-        to {
-          transform: translateX(115vw) scaleX(-1);
-        }
-      }
-
-      @keyframes train-rtl {
-        from {
-          transform: translateX(115vw);
-        }
-
-        to {
-          transform: translateX(-15vw);
-        }
-      }
-
-      @keyframes puff {
-        0% {
-          opacity: 0.7;
-          transform: translate(0, 0) scale(0.8);
-        }
-
-        100% {
-          opacity: 0;
-          transform: translate(0, -40px) scale(1.4);
-        }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-        .hero,
-        .train-emoji:hover {
-          animation: none;
-          transition: none;
-        }
-
-        .steam {
-          display: none;
-        }
-
-        .train.ltr,
-        .train.rtl {
-          left: 50%;
-          animation: fade-blip 1500ms ease both !important;
-        }
-
-        @keyframes fade-blip {
-          0% {
-            opacity: 0;
-            transform: translateX(-50%) scale(0.85);
-          }
-
-          20%,
-          80% {
-            opacity: 1;
-            transform: translateX(-50%) scale(1);
-          }
-
-          100% {
-            opacity: 0;
-            transform: translateX(-50%) scale(1);
-          }
-        }
-      }
-    </style>
+    <title>Signal — Brief to build mission</title>
+    <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
-    <main id="dispatcher">
-      <div class="hero" id="hero">
-        <div class="hero-inner">
-          <span class="train-emoji" role="img" aria-label="train">🚂</span>
-          <span class="tagline">Click anywhere to dispatch a train.</span>
-        </div>
+    <a class="skip-link" href="#main-content">Skip to work order</a>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Signal home">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>Signal</span>
+      </a>
+      <nav class="topbar-center" aria-label="Primary navigation">
+        <a class="active" href="#startTitle">New work order</a>
+        <a href="#reviewWorkspace">Builds</a>
+      </nav>
+      <div class="topbar-actions">
+        <button class="tour-launch" id="tourButton" type="button">Guided tour</button>
       </div>
+    </header>
 
-      <button
-        class="mute-toggle"
-        id="mute"
-        type="button"
-        aria-label="Mute"
-        aria-pressed="false"
-      >
-        🔊
-      </button>
+    <main class="shell" id="main-content">
+      <section class="workspace">
+        <section class="start-screen" aria-labelledby="startTitle">
+          <div class="command-header">
+            <div>
+              <h1 id="startTitle">From request to tested pull request.</h1>
+              <p>Start with the change you want to make. Signal scopes it before any code runs.</p>
+            </div>
+            <div class="command-header-actions">
+              <button class="button button-ghost" id="importButton">
+                Open completed report
+              </button>
+            </div>
+          </div>
 
-      <div class="counter" id="counter" aria-live="polite">0 trains dispatched</div>
+          <section class="factory-console" aria-labelledby="factoryTitle">
+            <div class="factory-input-panel">
+              <div>
+                <h2 id="factoryTitle">Describe the change</h2>
+                <p>Name the user, the behavior that should change, and any constraints worth protecting.</p>
+              </div>
+              <label for="factoryIdeaInput">Product request</label>
+              <textarea id="factoryIdeaInput" name="product-request" autocomplete="off" spellcheck="true" placeholder="For example: Let operations teams turn a repeated browser task into an approved automation…"></textarea>
+              <div class="context-row">
+                <button class="text-button" id="uploadTrigger" type="button">Attach context</button>
+                <span>Only add files that change the scope.</span>
+                <input id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" hidden />
+              </div>
+              <details class="source-drawer">
+                <summary>Attached context <span id="sourceDrawerStatus">No files attached.</span></summary>
+                <div class="source-list" id="sourceList"></div>
+              </details>
+              <div class="factory-actions">
+                <button class="button button-primary" id="factoryGenerateButton" type="button">Draft scope</button>
+                <button class="button button-ghost" id="factoryClearButton" type="button">Clear</button>
+              </div>
+              <p class="brief-footnote">This drafts a local brief. RocketRide runs only when you choose <strong>Run scope workflow</strong>.</p>
+            </div>
+            <aside class="delivery-line" aria-label="Software factory stages">
+              <div class="delivery-line-heading">
+                <div><h3>What this work order produces</h3><p>A human approves the scope before the coding runner starts.</p></div>
+              </div>
+              <ol>
+                <li><div><strong>Scope</strong><span>RocketRide reconciles the request and relevant sources.</span></div><em>Decision</em></li>
+                <li><div><strong>Commitments</strong><span>Each specialist role returns a bounded claim.</span></div><em>Ledger</em></li>
+                <li><div><strong>Trace</strong><span>Evidence, role, and decision stay linked for review.</span></div><em>Evidence</em></li>
+                <li><div><strong>Build</strong><span>The approved mission is implemented on an isolated branch.</span></div><em>Diff</em></li>
+                <li><div><strong>Verify</strong><span>Tests and build pass before a pull request opens.</span></div><em>Pull request</em></li>
+              </ol>
+            </aside>
+            <aside class="factory-summary-panel" id="factorySummaryPanel" hidden>
+              <span class="eyebrow">Draft plan</span>
+              <h3 id="factoryProductName">Your plan</h3>
+              <p id="factoryOutcome"></p>
+              <dl>
+                <div><dt id="factoryAudienceLabel">Audience</dt><dd id="factoryAudience"></dd></div>
+                <div><dt id="factoryDifferentiatorLabel">Differentiator</dt><dd id="factoryDifferentiator"></dd></div>
+                <div><dt id="factoryRiskLabel">Main risk</dt><dd id="factoryRisk"></dd></div>
+              </dl>
+            </aside>
+          </section>
+
+          <section class="factory-process" id="factoryProcess" aria-live="polite" hidden>
+            <div class="factory-process-heading">
+              <div><span class="eyebrow">Brief drafting</span><strong id="factoryProcessStatus">Waiting for your brief</strong></div>
+              <span>Local preview only</span>
+            </div>
+            <ol class="factory-process-list" id="factoryProcessList">
+              <li data-process-step="0"><b>01</b><span>Frame the user outcome</span></li>
+              <li data-process-step="1"><b>02</b><span>Draft the user flow</span></li>
+              <li data-process-step="2"><b>03</b><span>Outline the system shape</span></li>
+              <li data-process-step="3"><b>04</b><span>Identify build risks</span></li>
+              <li data-process-step="4"><b>05</b><span>Prepare the mission brief</span></li>
+            </ol>
+            <p>Next, optionally add files with the + button. Then run the RocketRide workflow. It applies the Customer Advocate, Skeptic, and Product Strategist roles to the same brief and context.</p>
+          </section>
+
+          <section class="factory-output" aria-label="Generated software product blueprint" hidden>
+            <div class="factory-output-heading">
+              <div>
+                <span class="eyebrow">Local brief package</span>
+                <h2>Review the core inputs before running the scope workflow.</h2>
+              </div>
+              <div class="readiness-score"><strong id="factoryArtifactCount">04</strong><span>core inputs</span></div>
+            </div>
+            <div class="factory-artifact-grid" id="factoryArtifactGrid"></div>
+            <div class="scope-command">
+              <div><strong>Ready to run the scope workflow?</strong><span>RocketRide runs the configured .pipe on your brief and any files added with the + button. It returns scope, risks, a recommendation, and proof links for review.</span></div>
+              <button class="button button-primary" id="scopeWithRocketRide" type="button"><span>◈</span> Run scope workflow</button>
+            </div>
+            <div class="factory-bottom-grid">
+              <section class="panel factory-conflicts">
+                <div class="panel-heading"><span class="eyebrow">Conflict resolution</span><span id="factoryConflictCount">03 issues</span></div>
+                <div id="factoryConflictList"></div>
+              </section>
+              <section class="panel factory-gates">
+                <div class="panel-heading"><span class="eyebrow">Readiness gates</span><span>pre-code check</span></div>
+                <div id="factoryGateList"></div>
+              </section>
+              <section class="panel factory-queue">
+                <div class="panel-heading"><span class="eyebrow">Next build queue</span><span>execution wedge</span></div>
+                <ol id="factoryBuildQueue"></ol>
+              </section>
+            </div>
+          </section>
+
+          <section class="build-mission" id="buildMission" aria-labelledby="buildMissionTitle" hidden>
+            <div class="build-mission-heading">
+              <div>
+                <span class="eyebrow">Build mission prepared</span>
+                <h2 id="buildMissionTitle">The approved decision is now an implementation package.</h2>
+                <p>It contains the brief, decision, acceptance checks, and build queue. A configured trusted repository lets Signal create a branch, dispatch one bounded coding task, verify it, and open it for human review.</p>
+              </div>
+              <div class="mission-state" id="missionState"><i></i><span>Plan ready for handoff</span></div>
+            </div>
+            <div class="mission-grid">
+              <ol class="mission-stages" aria-label="Build mission stages">
+                <li><b>01</b><div><strong>Scope the mission</strong><span id="missionScope">Pin the product brief, user flow, risk, and acceptance checks.</span></div><em>Ready</em></li>
+                <li><b>02</b><div><strong>Implement on a branch</strong><span>Signal creates an isolated worktree and gives the coding agent the bounded task, repository rules, and files it should inspect.</span></div><em>Next</em></li>
+                <li><b>03</b><div><strong>Verify the change</strong><span>Run the repository test and build scripts before the agent proposes a reviewable diff.</span></div><em>Gate</em></li>
+                <li><b>04</b><div><strong>Review and ship</strong><span>RocketRide adds a delivery assessment; then a human inspects the diff and approves the release.</span></div><em>Human</em></li>
+              </ol>
+              <aside class="mission-command">
+                <span class="eyebrow">Execution command</span>
+                <h3 id="missionName">Build mission not created</h3>
+                <p id="missionDescription">This handoff stays local to the browser until a repository and coding-agent integration are connected.</p>
+                <button class="button button-primary" id="createMissionButton" type="button" disabled><span>✓</span> Build mission prepared</button>
+              </aside>
+            </div>
+            <section class="execution-panel" aria-labelledby="executionTitle">
+              <div>
+                <span class="eyebrow">Repository execution</span>
+                <h3 id="executionTitle">Code, test, and pull request</h3>
+                <p id="executionDescription">Signal needs an explicitly trusted local repository before it can dispatch a coding run.</p>
+              </div>
+              <dl class="execution-facts">
+                <div><dt>Repository</dt><dd id="executionRepo">Not connected</dd></div>
+                <div><dt>Coding runner</dt><dd id="executionRunner">Not enabled</dd></div>
+                <div><dt>Quality gates</dt><dd id="executionTests">Tests + build</dd></div>
+                <div><dt>RocketRide review</dt><dd id="executionDeliveryReview">Not enabled</dd></div>
+                <div><dt>Pull request</dt><dd id="executionPr">Not created</dd></div>
+              </dl>
+              <div class="execution-action">
+                <button class="button button-primary" id="dispatchExecutionButton" type="button" disabled><span>▶</span> Run implementation</button>
+                <span id="executionState">Execution is disabled until a trusted repository is configured.</span>
+              </div>
+              <ol class="execution-timeline" aria-label="Implementation run progress">
+                <li data-execution-phase="preflight"><strong>Prepare branch</strong><span>Check the trusted repository and create an isolated worktree.</span></li>
+                <li data-execution-phase="implementing"><strong>Code change</strong><span>Dispatch the configured coding agent with the approved mission.</span></li>
+                <li data-execution-phase="testing"><strong>Quality gates</strong><span>Run the repository tests and build.</span></li>
+                <li data-execution-phase="delivery-review"><strong>Delivery review</strong><span>RocketRide reconciles the mission, diff summary, coding summary, and recorded quality gates.</span></li>
+                <li data-execution-phase="opening-pr"><strong>Open review</strong><span>Commit the tested diff and open a pull request.</span></li>
+              </ol>
+            </section>
+          </section>
+
+          <section class="scenario-panel" aria-labelledby="scenarioTitle">
+            <div class="scenario-copy">
+              <span class="eyebrow">Sample context packs</span>
+              <h2 id="scenarioTitle">Try a complete evidence set.</h2>
+              <p>These demos show the kinds of files teams can add with the + button: workflow clips, user language, tickets, operational data, screenshots, and safety constraints.</p>
+              <div class="scenario-list" id="scenarioList"></div>
+            </div>
+            <aside class="scenario-outcome">
+              <span class="eyebrow">Sample outcome preview</span>
+              <h3 id="scenarioOutcomeTitle"></h3>
+              <p id="scenarioOutcomeBody"></p>
+              <dl>
+                <div><dt>Decision type</dt><dd id="scenarioDecisionType"></dd></div>
+                <div><dt>Main risk</dt><dd id="scenarioRisk"></dd></div>
+                <div><dt>Evidence mix</dt><dd id="scenarioEvidenceMix"></dd></div>
+              </dl>
+            </aside>
+          </section>
+
+          <section class="status-row">
+            <strong>RocketRide engine</strong>
+            <span>RocketRide can analyze the selected workflow pack live, or the UI can replay deterministic demo output.</span>
+          </section>
+        </section>
+
+        <section class="review-workspace" id="reviewWorkspace" aria-labelledby="reviewTitle" hidden>
+          <div class="review-heading">
+            <div>
+              <span class="eyebrow">Review decision</span>
+              <h2 id="reviewTitle">Recommendation and proof</h2>
+              <p>RocketRide runs the configured scope workflow over the brief and optional files. It reconciles three specialist roles into a decision with evidence, challenges, and proof for review.</p>
+            </div>
+            <div class="header-actions">
+            <button class="button button-ghost" id="loadLiveButton" hidden>
+              <span>●</span> Load latest live run
+            </button>
+            <input id="reportInput" type="file" accept="application/json,.json" hidden />
+            <button class="button button-ghost" id="liveAnalyzeButton">
+              <span>◈</span> Run scope workflow
+            </button>
+            <button class="button button-ghost" id="proofToggle" aria-pressed="true">
+              <span>⌕</span> Proof mode
+            </button>
+            <button class="button button-primary" id="createMissionReviewButton">
+              <span class="button-spark">↗</span>
+              <span>Create build mission</span>
+            </button>
+            </div>
+          </div>
+
+        <section class="truth-banner" id="truthBanner" role="status">
+          <div class="truth-badge">DEMO</div>
+          <p><strong>This is a prerecorded, deterministic example.</strong> It did not call RocketRide. Use “Run scope workflow” for a live run, or “Open completed report” to review a saved result.</p>
+          <button id="dismissTruth" aria-label="Dismiss notice">×</button>
+        </section>
+
+        <section class="engine-status" id="engineStatus" aria-live="polite">
+          <i aria-hidden="true"></i>
+          <div><strong>RocketRide status not checked</strong><span>Run npm run rocketride:check for a connection and pipeline check.</span></div>
+          <code>not verified</code>
+        </section>
+
+        <section class="factory-operators" aria-labelledby="factoryOperatorsTitle">
+          <div class="factory-operators-heading">
+            <div>
+              <h3 id="factoryOperatorsTitle">Who works this scope</h3>
+              <p>RocketRide runs this configured workflow. These are specialist LLM roles with bounded jobs, not independent coding agents.</p>
+            </div>
+            <span id="factoryRunState" aria-live="polite">Awaiting a scope run</span>
+          </div>
+          <ol class="factory-operator-list">
+            <li class="factory-operator role" data-factory-role="customer"><span>Customer Advocate</span><p>Finds the user outcome and the evidence that supports it.</p><em>Specialist role</em></li>
+            <li class="factory-operator role" data-factory-role="skeptic"><span>Skeptic</span><p>Surfaces counter-evidence, uncertainty, and scope risk.</p><em>Specialist role</em></li>
+            <li class="factory-operator role" data-factory-role="strategist"><span>Product Strategist</span><p>Proposes the smallest reversible product decision.</p><em>Specialist role</em></li>
+            <li class="factory-operator system" data-factory-role="synthesis"><span>RocketRide synthesis</span><p>Reconciles the roles, validates the report, and links proof.</p><em>System step</em></li>
+            <li class="factory-operator runner" data-factory-role="runner"><span>Configured coding runner</span><p>Starts only after approval, inside an isolated branch.</p><em>Execution stage</em></li>
+          </ol>
+        </section>
+
+        <section class="pipeline-strip" aria-label="RocketRide pipeline trace">
+          <div class="pipeline-title">
+            <strong>RocketRide scope workflow</strong>
+            <span class="runtime" id="runtimeLabel">demo result</span>
+          </div>
+          <p class="pipeline-explainer">The three specialist roles run in parallel. Reading, synthesis, commitment checks, and proof linking are workflow steps run by RocketRide.</p>
+          <div class="pipeline" id="pipeline"></div>
+        </section>
+
+        <nav class="view-tabs" aria-label="Decision views">
+          <button class="active" data-view="decisionView">Decision</button>
+          <button data-view="promiseView">Promise ledger <span>05</span></button>
+          <button data-view="semanticView">Semantic spacetime <span>09</span></button>
+        </nav>
+
+        <section class="view-panel active" id="decisionView">
+        <div class="decision-grid">
+          <section class="primary-column">
+            <article class="recommendation-card reveal-card">
+              <div class="card-kicker">
+                <span>Recommended bet</span>
+                <span class="confidence-tag"><b id="confidenceValue">84%</b> confidence</span>
+              </div>
+              <h2 id="recommendationTitle">Ship a guided permissions setup before adding more customization.</h2>
+              <p id="recommendationSummary">The evidence points to configuration anxiety—not missing flexibility—as the activation bottleneck for larger teams.</p>
+              <div class="recommendation-meta">
+                <div class="confidence-meter" aria-label="84 percent confidence">
+                  <span id="confidenceBar"></span>
+                </div>
+                <span id="evidenceCount">11 supporting · 3 challenging</span>
+              </div>
+              <button class="trace-link" data-open-trace="recommendation">
+                Inspect how this decision was made <span>→</span>
+              </button>
+            </article>
+
+            <div class="section-label">
+              <span>Evidence-backed signals</span>
+              <span id="signalCount">03 signals</span>
+            </div>
+            <div class="signal-list" id="signalList"></div>
+
+            <article class="contradiction-card reveal-card" id="contradictionCard">
+              <div class="contradiction-icon">≠</div>
+              <div>
+                <div class="card-kicker"><span>Productive contradiction</span><b>Needs testing</b></div>
+                <h3 id="contradictionTitle"></h3>
+                <p id="contradictionBody"></p>
+                <div class="evidence-versus" id="evidenceVersus"></div>
+              </div>
+            </article>
+
+            <article class="experiment-card reveal-card">
+              <div class="experiment-index">01</div>
+              <div class="experiment-copy">
+                <span class="eyebrow">Next smallest experiment</span>
+                <h3 id="experimentTitle"></h3>
+                <p id="experimentBody"></p>
+                <div class="experiment-footer">
+                  <span id="experimentWindow"></span>
+                  <span id="experimentMetric"></span>
+                </div>
+              </div>
+              <button class="arrow-button" aria-label="Open experiment">↗</button>
+            </article>
+          </section>
+
+          <aside class="insight-column">
+            <section class="panel momentum-panel">
+              <div class="panel-heading">
+                <span class="eyebrow">Decision momentum</span>
+                <span class="delta">+12%</span>
+              </div>
+              <div class="momentum-score"><strong>84</strong><span>/ 100</span></div>
+              <svg class="sparkline" viewBox="0 0 280 80" role="img" aria-label="Confidence increased over four evidence drops">
+                <path class="spark-area" d="M0 64 C38 61 42 50 76 52 S127 57 155 37 S205 43 231 22 S260 20 280 9 L280 80 L0 80 Z" />
+                <path class="spark-line" d="M0 64 C38 61 42 50 76 52 S127 57 155 37 S205 43 231 22 S260 20 280 9" />
+                <circle cx="280" cy="9" r="4" />
+              </svg>
+              <div class="spark-labels"><span>Sep 12</span><span>4 evidence drops</span><span>Today</span></div>
+            </section>
+
+            <section class="panel lenses-panel">
+              <div class="panel-heading">
+                <span class="eyebrow">Specialist lenses</span>
+                <span>3 / 3 agree</span>
+              </div>
+              <div class="lens-list" id="lensList"></div>
+            </section>
+
+            <section class="panel proof-panel active" id="proofPanel">
+              <div class="panel-heading">
+                <span class="eyebrow">Proof mode</span>
+                <span id="proofCount">00 claims</span>
+              </div>
+              <p>Every visible decision claim should point back to evidence, a specialist finding, and a challenge status.</p>
+              <div class="proof-list" id="proofList"></div>
+            </section>
+
+            <section class="panel provenance-panel">
+              <div class="panel-heading">
+                <span class="eyebrow">Provenance</span>
+                <span class="verified">✓ traceable</span>
+              </div>
+              <dl>
+                <div><dt>Pipeline</dt><dd>signal-room.pipe</dd></div>
+                <div><dt>Runtime</dt><dd id="runtimeMode">Demo fixture</dd></div>
+                <div><dt>Trace level</dt><dd>summary</dd></div>
+                <div><dt>Report ID</dt><dd id="reportId">demo_arcade_01</dd></div>
+              </dl>
+            </section>
+          </aside>
+        </div>
+        </section>
+
+        <section class="view-panel" id="promiseView" hidden>
+          <div class="theory-header">
+            <div>
+              <span class="eyebrow">Promise Theory / cooperation contract</span>
+              <h2>What each specialist role commits to—and whether that commitment was met.</h2>
+            </div>
+            <div class="theory-principle"><b>Principle 01</b><span>Each role is accountable for its own output.</span></div>
+          </div>
+          <div class="promise-layout">
+            <div class="promise-ledger" id="promiseLedger"></div>
+            <aside class="promise-summary panel">
+              <span class="eyebrow">Ensemble assessment</span>
+              <div class="promise-score"><strong id="promiseKept">5</strong><span>/ 5 kept</span></div>
+              <p>The collective recommendation is trusted only when the required promises compose without an unresolved conflict.</p>
+              <div class="promise-legend">
+                <span><i class="kept"></i> kept</span>
+                <span><i class="qualified"></i> qualified</span>
+                <span><i class="broken"></i> broken</span>
+              </div>
+              <button class="trace-link" id="replayPromises">Replay assessments <span>→</span></button>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view-panel" id="semanticView" hidden>
+          <div class="theory-header">
+            <div>
+              <span class="eyebrow">Semantic Spacetime / decision trace</span>
+              <h2>Follow the decision from source evidence to specialist finding to recommendation.</h2>
+            </div>
+            <div class="theory-principle"><b>Principle 02</b><span>Meaning lives in adjacency and interaction.</span></div>
+          </div>
+          <div class="semantic-layout">
+            <div class="semantic-canvas panel">
+              <div class="map-toolbar">
+                <span class="eyebrow">Declared paths in this report</span>
+                <div><button class="map-filter active" data-edge="all">All</button><button class="map-filter" data-edge="supports">Supports</button><button class="map-filter" data-edge="challenges">Challenges</button></div>
+              </div>
+              <svg id="semanticMap" viewBox="0 0 760 480" role="img" aria-label="Semantic evidence map"></svg>
+              <div class="map-legend"><span><i class="source"></i> source evidence</span><span><i class="agent"></i> specialist finding</span><span><i class="decision"></i> recommendation</span></div>
+            </div>
+            <aside class="topology-panel panel">
+              <span class="eyebrow">Selected path</span>
+              <h3 id="topologyTitle">Guided permissions setup</h3>
+              <p id="topologyBody">Select a source, specialist, or recommendation to see the declared supporting and challenging paths.</p>
+              <dl>
+                <div><dt>Support links</dt><dd>6</dd></div>
+                <div><dt>Challenge links</dt><dd>3</dd></div>
+                <div><dt>Trace stage</dt><dd>Recommendation</dd></div>
+                <div><dt>Relationship rule</dt><dd>Declared links</dd></div>
+              </dl>
+              <div class="topology-note">This is a source-linked trace, not an embedding chart. A line records a declared support or challenge in the report; it does not claim causality by proximity.</div>
+            </aside>
+          </div>
+        </section>
+        </section>
+      </section>
     </main>
 
-    <script>
-      const TRAIN_EMOJIS = ["🚂", "🚃", "🚅", "🚋", "🚄"];
-      const PUFF_CHARS = ["·", "°", "・", "∘"];
-      const LANE_COUNT = 5;
-      const DISPATCH_THROTTLE_MS = 120;
-      const PUFF_COUNT = 4;
-      const MIN_DURATION_MS = 4500;
-      const MAX_DURATION_MS = 7500;
+    <aside class="tour-card" id="tourCard" aria-live="polite" hidden>
+      <div class="tour-progress"><span id="tourStep">01 / 07</span><button id="closeTour" aria-label="Close guided tour">×</button></div>
+      <span class="eyebrow" id="tourEyebrow">Guided tour</span>
+      <h2 id="tourTitle">Meet Signal Room</h2>
+      <p id="tourBody"></p>
+      <div class="tour-actions">
+        <button class="button button-ghost" id="tourBack">Back</button>
+        <button class="button button-primary" id="tourNext">Next</button>
+      </div>
+    </aside>
 
-      const dispatcher = document.querySelector("#dispatcher");
-      const hero = document.querySelector("#hero");
-      const muteButton = document.querySelector("#mute");
-      const counter = document.querySelector("#counter");
-      const choo = new Audio("./public/choo-choo.mp3");
-      choo.preload = "auto";
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-      let count = 0;
-      let nextId = 1;
-      let lastDispatch = 0;
-      let lastLane = -1;
-      let lastDirection = "rtl";
-      let muted = localStorage.getItem("wtc:muted") === "1";
+    <dialog class="trace-dialog" id="traceDialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow">Decision trace</span>
+          <h2>Why this recommendation?</h2>
+        </div>
+        <button class="icon-button" id="closeTrace" aria-label="Close trace">×</button>
+      </div>
+      <div class="trace-body">
+        <div class="trace-line"></div>
+        <div class="trace-event"><b>01</b><div><span>Source evidence</span><p>11 passages mentioned setup uncertainty, permissions, or fear of breaking a shared workspace.</p></div></div>
+        <div class="trace-event"><b>02</b><div><span>Customer advocate</span><p>Classified the dominant job as “help me configure this safely,” not “give me more controls.”</p></div></div>
+        <div class="trace-event"><b>03</b><div><span>Skeptic</span><p>Challenged selection bias: power users still ask for customization. Kept confidence below 90%.</p></div></div>
+        <div class="trace-event"><b>04</b><div><span>Product strategist</span><p>Proposed a reversible two-week template experiment before committing to a permissions redesign.</p></div></div>
+        <div class="trace-event is-final"><b>05</b><div><span>Synthesis</span><p>Recommended guided setup because it addresses the strongest evidence while preserving optionality.</p></div></div>
+      </div>
+      <div class="dialog-footer">
+        <span>Demo trace — representative, not produced by a live run</span>
+        <code>pipelineTraceLevel: summary</code>
+      </div>
+    </dialog>
 
-      function pick(items) {
-        return items[Math.floor(Math.random() * items.length)];
-      }
+    <dialog class="trace-dialog evidence-dialog" id="sourceDialog">
+      <div class="dialog-header">
+        <div>
+          <span class="eyebrow" id="sourceDialogKind">Evidence source</span>
+          <h2 id="sourceDialogTitle">Source</h2>
+        </div>
+        <button class="icon-button" id="closeSource" aria-label="Close evidence source">×</button>
+      </div>
+      <div class="source-dialog-body">
+        <div class="source-provenance" id="sourceDialogProvenance"></div>
+        <pre id="sourceDialogContent"></pre>
+        <section class="source-related">
+          <span class="eyebrow">Signals referencing this source</span>
+          <div id="sourceDialogSignals"></div>
+        </section>
+      </div>
+    </dialog>
 
-      function syncMuteButton() {
-        muteButton.textContent = muted ? "🔇" : "🔊";
-        muteButton.setAttribute("aria-label", muted ? "Unmute" : "Mute");
-        muteButton.setAttribute("aria-pressed", String(muted));
-        localStorage.setItem("wtc:muted", muted ? "1" : "0");
-      }
-
-      function updateCounter() {
-        const noun = count === 1 ? "train" : "trains";
-        counter.textContent = `${count} ${noun} dispatched`;
-        document.title =
-          count === 0 ? "welcome to conductor" : `welcome to conductor (${count})`;
-      }
-
-      function playChoo() {
-        if (muted) return;
-        const node = choo.cloneNode(true);
-        node.volume = 0.28;
-        node.play().catch(() => {});
-      }
-
-      function removeNode(event) {
-        event.currentTarget.remove();
-      }
-
-      function createSteam(train, delay) {
-        window.setTimeout(() => {
-          const elapsed = performance.now() - train.startedAt;
-          const progress = Math.min(elapsed / train.durationMs, 1);
-          const puff = document.createElement("span");
-          const x =
-            train.direction === "ltr"
-              ? -15 + 130 * progress
-              : 115 - 130 * progress;
-
-          puff.className = "steam";
-          puff.textContent = pick(PUFF_CHARS);
-          puff.style.left = `${x}vw`;
-          puff.style.top = `${10 + train.lane * 16}vh`;
-          puff.addEventListener("animationend", removeNode, { once: true });
-          dispatcher.append(puff);
-        }, delay);
-      }
-
-      function dispatchTrain() {
-        const now = performance.now();
-        if (now - lastDispatch < DISPATCH_THROTTLE_MS) return;
-        lastDispatch = now;
-
-        let lane = Math.floor(Math.random() * LANE_COUNT);
-        if (lane === lastLane) lane = (lane + 1) % LANE_COUNT;
-        lastLane = lane;
-
-        const direction = lastDirection === "ltr" ? "rtl" : "ltr";
-        lastDirection = direction;
-
-        const durationMs =
-          MIN_DURATION_MS + Math.random() * (MAX_DURATION_MS - MIN_DURATION_MS);
-        const train = {
-          id: nextId++,
-          lane,
-          direction,
-          durationMs,
-          startedAt: now,
-        };
-
-        const trainNode = document.createElement("span");
-        trainNode.className = `train ${direction}`;
-        trainNode.textContent = pick(TRAIN_EMOJIS);
-        trainNode.style.top = `${10 + lane * 16}vh`;
-        trainNode.style.animationDuration = `${durationMs}ms`;
-        trainNode.addEventListener("animationend", removeNode, { once: true });
-        dispatcher.append(trainNode);
-
-        count += 1;
-        hero.classList.add("dispatched");
-        updateCounter();
-        playChoo();
-
-        for (let i = 0; i < PUFF_COUNT; i += 1) {
-          createSteam(train, (durationMs / (PUFF_COUNT + 1)) * (i + 1));
-        }
-      }
-
-      dispatcher.addEventListener("click", dispatchTrain);
-      muteButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        muted = !muted;
-        syncMuteButton();
-      });
-
-      window.addEventListener("keydown", (event) => {
-        if (event.code === "Space" || event.code === "Enter") {
-          event.preventDefault();
-          dispatchTrain();
-        } else if (event.key === "m" || event.key === "M") {
-          muted = !muted;
-          syncMuteButton();
-        }
-      });
-
-      syncMuteButton();
-      updateCounter();
-    </script>
+    <script type="module" src="./src/app.js"></script>
   </body>
 </html>

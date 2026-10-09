@@ -11,6 +11,13 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+data/live-report.json
+data/rocketride-health.json
+data/seed-evidence.txt
+# Regenerate recording renders locally; do not grow the source repository with them.
+data/recordings/
+.impeccable/
 .conductor/settings.local.toml
 .conductor/settings.local.json
 

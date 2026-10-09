@@ -1,0 +1,219 @@
+{
+  "project_id": "51a42963-5305-4a26-9807-91bb119c1759",
+  "version": 1,
+  "components": [
+    {
+      "id": "evidence_in",
+      "provider": "webhook",
+      "name": "Evidence bundle",
+      "config": {
+        "hideForm": true,
+        "mode": "Source",
+        "parameters": {},
+        "type": "webhook"
+      },
+      "ui": { "position": { "x": 20, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "parse_evidence",
+      "provider": "parse",
+      "name": "Parse evidence",
+      "config": {},
+      "input": [{ "lane": "tags", "from": "evidence_in" }],
+      "ui": { "position": { "x": 220, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "evidence_question",
+      "provider": "question",
+      "name": "Evidence as question",
+      "config": {},
+      "input": [{ "lane": "text", "from": "parse_evidence" }],
+      "ui": { "position": { "x": 420, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "customer_prompt",
+      "provider": "prompt",
+      "name": "Customer advocate brief",
+      "config": {
+        "instructions": [
+          "You are the Customer Advocate agent. Your promise to the Synthesis agent is to ground every customer claim in supplied evidence and expose uncertainty. Identify repeated jobs, pains, language, and desired outcomes. Every claim must include a direct evidence excerpt or source label. Explicitly say when evidence is insufficient. Never invent customers, counts, quotes, metrics, or facts. Return compact JSON with keys role, promise, promise_assessment, findings, evidence_links, uncertainties, and proposed_signal."
+        ]
+      },
+      "input": [{ "lane": "questions", "from": "evidence_question" }],
+      "ui": { "position": { "x": 640, "y": 80 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "skeptic_prompt",
+      "provider": "prompt",
+      "name": "Skeptic brief",
+      "config": {
+        "instructions": [
+          "You are the Skeptic agent. Your promise to the Synthesis agent is to expose rival explanations, conflicts, and the maximum confidence the evidence permits. Analyze only the supplied evidence. Search for contradictions, selection bias, weak samples, alternative explanations, and claims the evidence cannot support. Every challenge must cite an evidence excerpt or source label. Never invent customers, counts, quotes, metrics, or facts. Return compact JSON with keys role, promise, promise_assessment, challenges, evidence_links, uncertainties, and confidence_ceiling."
+        ]
+      },
+      "input": [{ "lane": "questions", "from": "evidence_question" }],
+      "ui": { "position": { "x": 640, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "strategist_prompt",
+      "provider": "prompt",
+      "name": "Strategist brief",
+      "config": {
+        "instructions": [
+          "You are the Product Strategist agent. Your promise to the Synthesis agent is to propose the smallest reversible and measurable next step supported by evidence. Analyze only the supplied evidence. Do not turn a weak signal into certainty. Cite evidence excerpts or source labels for each bet. Never invent customers, counts, quotes, metrics, or facts. Return compact JSON with keys role, promise, promise_assessment, bets, evidence_links, uncertainties, and smallest_experiment."
+        ]
+      },
+      "input": [{ "lane": "questions", "from": "evidence_question" }],
+      "ui": { "position": { "x": 640, "y": 440 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "customer_llm",
+      "provider": "llm_openai",
+      "name": "Customer advocate",
+      "config": {
+        "profile": "openai-4o-mini",
+        "openai-4o-mini": { "apikey": "${ROCKETRIDE_OPENAI_KEY}" },
+        "temperature": 0,
+        "parameters": {}
+      },
+      "input": [{ "lane": "questions", "from": "customer_prompt" }],
+      "ui": { "position": { "x": 860, "y": 80 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "skeptic_llm",
+      "provider": "llm_openai",
+      "name": "Skeptic",
+      "config": {
+        "profile": "openai-4o-mini",
+        "openai-4o-mini": { "apikey": "${ROCKETRIDE_OPENAI_KEY}" },
+        "temperature": 0,
+        "parameters": {}
+      },
+      "input": [{ "lane": "questions", "from": "skeptic_prompt" }],
+      "ui": { "position": { "x": 860, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "strategist_llm",
+      "provider": "llm_openai",
+      "name": "Product strategist",
+      "config": {
+        "profile": "openai-4o-mini",
+        "openai-4o-mini": { "apikey": "${ROCKETRIDE_OPENAI_KEY}" },
+        "temperature": 0,
+        "parameters": {}
+      },
+      "input": [{ "lane": "questions", "from": "strategist_prompt" }],
+      "ui": { "position": { "x": 860, "y": 440 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "customer_document",
+      "provider": "answer_documents",
+      "name": "Customer findings",
+      "config": {},
+      "input": [{ "lane": "answers", "from": "customer_llm" }],
+      "ui": { "position": { "x": 1080, "y": 80 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "skeptic_document",
+      "provider": "answer_documents",
+      "name": "Skeptic findings",
+      "config": {},
+      "input": [{ "lane": "answers", "from": "skeptic_llm" }],
+      "ui": { "position": { "x": 1080, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "strategist_document",
+      "provider": "answer_documents",
+      "name": "Strategist findings",
+      "config": {},
+      "input": [{ "lane": "answers", "from": "strategist_llm" }],
+      "ui": { "position": { "x": 1080, "y": 440 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "synthesis_prompt",
+      "provider": "prompt",
+      "name": "Evidence reconciliation",
+      "config": {
+        "instructions": [
+          "Reconcile the three specialist analyses against the original evidence. Treat Promise Theory and Semantic Spacetime as applied design lenses, not as proof of truth. Assess whether each agent kept only the promise it made about its own behavior. Build a semantic topology from declared supports/challenges relationships; do not claim that visual proximity proves causality. Do not add facts absent from the supplied material. Prefer uncertainty over fabrication. Return only valid JSON—no markdown—with this exact top-level schema: {schemaVersion, mode, reportId, generatedAt, recommendation:{title,summary,confidence,supportingEvidence,challengingEvidence}, sources:[{id,kind,name,meta}], signals:[{index,strength,title,body,people,sourceLabel}], proofs:[{id,claim,sourceId,sourceName,agent,status,quote}], contradiction:{title,body,forQuote,againstQuote}, experiment:{title,body,window,metric}, lenses:[{initials,name,note,vote}], pipeline:[{label,detail}], promises:[{agent,initials,to,body,evidence,assessment}], semanticMap:{nodes:[{id,label,sub,type,x,y,radius}],edges:[{from,to,kind}]}}. mode must be live. Each proof must connect one important visible decision claim to an existing source id or source name, identify the agent that used or challenged it, and include a verbatim quote when available. proof status is supported, qualified, challenged, or blocked. assessment is kept, qualified, or broken. node type is source, agent, or decision; edge kind is supports or challenges; x is 40-720 and y is 40-440. Confidence must be an integer from 0 to 100 and reflect evidence quality. Quotes must be verbatim or explicitly labeled as paraphrases. Use reportId signal_room_live and ISO 8601 for generatedAt."
+        ]
+      },
+      "input": [
+        { "lane": "questions", "from": "evidence_question" },
+        { "lane": "documents", "from": "customer_document" },
+        { "lane": "documents", "from": "skeptic_document" },
+        { "lane": "documents", "from": "strategist_document" }
+      ],
+      "ui": { "position": { "x": 1310, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "synthesis_llm",
+      "provider": "llm_openai",
+      "name": "Decision synthesis",
+      "config": {
+        "profile": "openai-4o-mini",
+        "openai-4o-mini": { "apikey": "${ROCKETRIDE_OPENAI_KEY}" },
+        "temperature": 0,
+        "parameters": {}
+      },
+      "input": [{ "lane": "questions", "from": "synthesis_prompt" }],
+      "ui": { "position": { "x": 1530, "y": 260 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "synthesis_document",
+      "provider": "answer_documents",
+      "name": "Synthesis document",
+      "config": {},
+      "input": [{ "lane": "answers", "from": "synthesis_llm" }],
+      "ui": { "position": { "x": 1730, "y": 200 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "report_extractor",
+      "provider": "extract_data",
+      "name": "Enforce report contract",
+      "config": {
+        "profile": "default",
+        "fields": [
+          { "column": "schemaVersion", "type": "int", "defval": "1" },
+          { "column": "mode", "type": "text", "defval": "live" },
+          { "column": "reportId", "type": "text", "defval": "signal_room_live" },
+          { "column": "generatedAt", "type": "datetime", "defval": "" },
+          { "column": "recommendation", "type": "json", "defval": "{}" },
+          { "column": "sources", "type": "json", "defval": "[]" },
+          { "column": "signals", "type": "json", "defval": "[]" },
+          { "column": "proofs", "type": "json", "defval": "[]" },
+          { "column": "contradiction", "type": "json", "defval": "{}" },
+          { "column": "experiment", "type": "json", "defval": "{}" },
+          { "column": "lenses", "type": "json", "defval": "[]" },
+          { "column": "pipeline", "type": "json", "defval": "[]" },
+          { "column": "promises", "type": "json", "defval": "[]" },
+          { "column": "semanticMap", "type": "json", "defval": "{}" }
+        ]
+      },
+      "input": [{ "lane": "documents", "from": "synthesis_document" }],
+      "ui": { "position": { "x": 1930, "y": 200 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "formatter_llm",
+      "provider": "llm_openai",
+      "name": "Report formatter",
+      "config": {
+        "profile": "openai-4o-mini",
+        "openai-4o-mini": { "apikey": "${ROCKETRIDE_OPENAI_KEY}" },
+        "temperature": 0,
+        "parameters": {}
+      },
+      "control": [{ "classType": "llm", "from": "report_extractor" }],
+      "ui": { "position": { "x": 1930, "y": 380 }, "nodeType": "default", "formDataValid": true }
+    },
+    {
+      "id": "decision_response",
+      "provider": "response_answers",
+      "name": "Decision report",
+      "config": { "laneName": "answers" },
+      "input": [{ "lane": "answers", "from": "report_extractor" }],
+      "ui": { "position": { "x": 2150, "y": 200 }, "nodeType": "default", "formDataValid": true }
+    }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 0.75 }
+}

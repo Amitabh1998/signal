@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@500;700&display=swap');
+      * { box-sizing: border-box; }
+      body { margin: 0; width: 1280px; height: 760px; display: grid; place-items: center; color: #f3f5ee; background: #08100c; font-family: Manrope, sans-serif; }
+      .screen { width: 1120px; height: 620px; padding: 34px; border: 1px solid #29362e; border-radius: 24px; background: radial-gradient(circle at 85% 12%, rgba(184,255,61,.13), transparent 32%), #101813; box-shadow: 0 30px 120px rgba(0,0,0,.45); }
+      .top { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 1px solid #253129; }
+      .eyebrow { color: #ffb35c; font: 500 15px/1 'DM Mono', monospace; letter-spacing: .1em; text-transform: uppercase; }
+      h1 { margin: 11px 0 0; font-size: 46px; letter-spacing: -.04em; }
+      .pill { padding: 12px 16px; border: 1px solid #ffb35c; border-radius: 999px; color: #ffb35c; font: 500 14px 'DM Mono', monospace; }
+      table { width: 100%; margin-top: 28px; border-collapse: collapse; overflow: hidden; border: 1px solid #26322b; border-radius: 14px; }
+      td { padding: 20px 18px; border-bottom: 1px solid #26322b; color: #b9c1b9; font-size: 19px; }
+      td:first-child { color: #f3f5ee; font-weight: 700; }
+      td:last-child { color: #ffb35c; font-family: 'DM Mono', monospace; font-size: 15px; text-align: right; }
+      .callout { margin-top: 28px; padding: 22px 24px; border: 1px solid rgba(184,255,61,.24); border-radius: 16px; background: rgba(184,255,61,.08); color: #dce6d6; font-size: 21px; }
+    </style>
+  </head>
+  <body>
+    <section class="screen">
+      <div class="top">
+        <div><span class="eyebrow">Support and sales backlog</span><h1>Integration Request Queue</h1></div>
+        <div class="pill">Q4 evidence</div>
+      </div>
+      <table><tr><td>Jira sync</td><td>3 accounts</td><td>$340K influenced</td></tr><tr><td>Zendesk webhook</td><td>1 account</td><td>$70K influenced</td></tr><tr><td>Slack alerts</td><td>2 accounts</td><td>$120K influenced</td></tr><tr><td>Salesforce field map</td><td>1 account</td><td>$80K influenced</td></tr></table>
+      <div class="callout">Integration demand is visible, but smaller than blocked security pipeline.</div>
+    </section>
+  </body>
+</html>

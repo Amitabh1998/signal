@@ -1,0 +1,14 @@
+SOURCE: Rina - BrightCart
+Rina: "I could not tell whether we would pay for seats, workflows, or documents. We are two people right now, so the annual package felt like a procurement conversation before I had proof."
+
+SOURCE: Dev - OrbitOps
+Dev: "Once the first approval workflow ran, the price made sense. Before that, I wanted a way to swipe a card and cap usage so I could prove it internally."
+
+SOURCE: Billing tickets #18
+Eight tickets ask how usage is metered. Five ask whether a small pilot can start without annual procurement. Four request an enterprise discount. Four are unrelated billing hygiene.
+
+SOURCE: Trial conversion slice
+Teams that created one automated workflow converted at 34 percent. Teams that reached the pricing page before creating a workflow converted at 7 percent. Segment sizes are uneven.
+
+SOURCE: Sales desk notes
+Enterprise prospects still require annual contracts, legal review, and custom procurement terms. Sales warns against disrupting the current enterprise quote motion.
