@@ -2,7 +2,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { RocketRideClient } from 'rocketride';
 import { attachEvidenceContent } from '../src/evidence.js';
+import { verifyReportProofs } from '../src/proof-verification.js';
 import { normalizeReport, unwrapRocketRideResponse } from '../src/report.js';
+import { createFlowRecorder, scopeFlowSteps } from '../src/rocketride-flow.js';
 
 async function loadDotEnv(filepath) {
   try {
@@ -28,6 +30,10 @@ function parseArgs(argv) {
   return args;
 }
 
+function engineTrace({ eventCount, durationMs, steps }) {
+  return { trace: steps, flowEventCount: eventCount, engineDurationMs: durationMs };
+}
+
 const args = parseArgs(process.argv.slice(2));
 await loadDotEnv(resolve('.env'));
 const inputPath = resolve(String(args.input || 'data/sample-evidence.txt'));
@@ -44,13 +50,15 @@ if (args.help) {
 const evidence = await readFile(inputPath, 'utf8');
 if (!evidence.trim()) throw new Error(`Input file is empty: ${inputPath}`);
 
+const flow = createFlowRecorder(scopeFlowSteps);
 const client = new RocketRideClient({
   uri,
   auth: auth || undefined,
   persist: false,
   requestTimeout: 180_000,
   clientName: 'Signal Room',
-  clientVersion: '0.1.0'
+  clientVersion: '0.1.0',
+  onEvent: async message => flow.onEvent(message)
 });
 
 let token;
@@ -59,11 +67,13 @@ try {
   await client.connect();
   const run = await client.use({
     filepath: pipelinePath,
-    pipelineTraceLevel: 'summary',
+    pipelineTraceLevel: 'full',
     name: 'Signal Room evidence analysis'
   });
   token = run.token;
   console.log(`Pipeline started: ${token.slice(0, 10)}…`);
+  // Flow events are the engine's own record of which components ran and when.
+  await client.addMonitor({ token }, ['flow']);
 
   const rawResult = await client.send(
     token,
@@ -74,17 +84,19 @@ try {
   if (!rawResult) throw new Error('RocketRide returned no pipeline result.');
 
   const unwrapped = unwrapRocketRideResponse(rawResult);
-  const report = normalizeReport({ ...unwrapped, mode: 'live' });
+  let report = normalizeReport({ ...unwrapped, mode: 'live' });
   report.sources = attachEvidenceContent(report.sources, evidence);
+  report = verifyReportProofs(report);
   report.mode = 'live';
   report.generatedAt = new Date().toISOString();
   report.reportId = `${report.reportId}_${Date.now()}`;
   report.provenance = {
     engineUri: uri,
     pipeline: pipelinePath.split('/').at(-1),
-    pipelineTraceLevel: 'summary',
+    pipelineTraceLevel: 'full',
     taskTokenPrefix: token.slice(0, 10),
-    importedFrom: inputPath.split('/').at(-1)
+    importedFrom: inputPath.split('/').at(-1),
+    ...engineTrace(flow.summarize())
   };
 
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
@@ -93,7 +105,7 @@ try {
 } catch (error) {
   console.error('\nNo report was generated. Signal Room will not substitute demo output for a failed live run.');
   console.error(`RocketRide error: ${error instanceof Error ? error.message : String(error)}`);
-  console.error('Check that the engine is reachable and that ROCKETRIDE_OPENAI_KEY is available to the engine.');
+  console.error('Check that the engine is reachable and that ROCKETRIDE_OPENROUTER_KEY is available to the engine.');
   process.exitCode = 1;
 } finally {
   if (token) {

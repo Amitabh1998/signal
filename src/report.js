@@ -37,7 +37,7 @@ export function normalizeReport(candidate) {
   const cleanCount = value => Math.max(0, Math.round(Number(value) || 0));
   const confidence = Math.max(0, Math.min(100, Math.round(Number(candidate.recommendation.confidence))));
 
-  return {
+  const report = {
     schemaVersion: 1,
     mode: candidate.mode === 'live' ? 'live' : 'imported',
     reportId: cleanText(candidate.reportId, `import_${Date.now()}`),
@@ -75,7 +75,14 @@ export function normalizeReport(candidate) {
       sourceName: cleanText(proof?.sourceName),
       agent: cleanText(proof?.agent, 'Synthesis'),
       status: ['supported', 'qualified', 'challenged', 'blocked'].includes(proof?.status) ? proof.status : 'qualified',
-      quote: cleanText(proof?.quote, 'No quote supplied.')
+      quote: cleanText(proof?.quote, 'No quote supplied.'),
+      verification: {
+        status: ['verbatim', 'paraphrase', 'not-found', 'source-unavailable'].includes(proof?.verification?.status)
+          ? proof.verification.status
+          : 'source-unavailable',
+        sourceId: cleanText(proof?.verification?.sourceId, cleanText(proof?.sourceId)),
+        checkedAt: cleanText(proof?.verification?.checkedAt)
+      }
     })) : [],
     contradiction: {
       title: cleanText(candidate.contradiction.title, 'No contradiction returned.'),
@@ -123,6 +130,15 @@ export function normalizeReport(candidate) {
       })) : []
     }
   };
+
+  // Models often leave the evidence tallies at zero while still returning
+  // graded proof claims; count those claims instead of showing "0 supporting".
+  const { recommendation, proofs } = report;
+  if (!recommendation.supportingEvidence && !recommendation.challengingEvidence && proofs.length) {
+    recommendation.supportingEvidence = proofs.filter(proof => proof.status === 'supported').length;
+    recommendation.challengingEvidence = proofs.filter(proof => ['challenged', 'blocked'].includes(proof.status)).length;
+  }
+  return report;
 }
 
 export function unwrapRocketRideResponse(response) {
@@ -135,11 +151,16 @@ export function unwrapRocketRideResponse(response) {
 
   // RocketRide's extract_data node intentionally emits a table (an array of
   // rows), even when the requested contract represents one report.
+  // extract_data passes through the model's `{ items: [...] }` row wrapper as-is.
+  if (isObject(parsed) && Array.isArray(parsed.items) && Object.keys(parsed).length === 1) parsed = parsed.items;
+
+  // The extractor model occasionally splits one report across several rows;
+  // keep the most complete row rather than failing the whole run.
   if (Array.isArray(parsed)) {
-    if (parsed.length !== 1) {
-      throw new Error(`Expected one RocketRide report row, received ${parsed.length}.`);
+    if (!parsed.length) {
+      throw new Error('Expected one RocketRide report row, received 0.');
     }
-    parsed = parsed[0];
+    parsed = parsed.reduce((best, row) => (JSON.stringify(row).length > JSON.stringify(best).length ? row : best));
   }
 
   // Keep this compatible with extractors configured as one JSON "report"

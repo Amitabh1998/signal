@@ -1,0 +1,14 @@
+services:
+  rocketride:
+    image: ghcr.io/rocketride-org/rocketride-engine:latest
+    platform: linux/amd64
+    ports:
+      - "127.0.0.1:5565:5565"
+    environment:
+      ROCKETRIDE_OPENROUTER_KEY: "${ROCKETRIDE_OPENROUTER_KEY:?Add ROCKETRIDE_OPENROUTER_KEY to .env}"
+    volumes:
+      - rocketride-data:/opt/data
+    restart: unless-stopped
+
+volumes:
+  rocketride-data:

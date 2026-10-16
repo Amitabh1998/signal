@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "title": "Require approval before replaying a recorded browser workflow",
+  "brief": "Update the workflow recorder so a recorded workflow remains a draft until a named human approves it. Require non-empty handoff notes during approval and preserve who approved the plan. A draft or rejected workflow must never be replay-ready.",
+  "acceptanceCriteria": [
+    "A newly recorded workflow is not replay-ready.",
+    "Approval requires a non-empty approver and handoff notes.",
+    "An approved workflow records the approver and becomes replay-ready.",
+    "A rejected workflow remains unable to replay.",
+    "Automated tests cover draft, approved, invalid approval, and rejected states.",
+    "npm test and npm run build pass."
+  ]
+}

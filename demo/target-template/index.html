@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workflow Recorder</title></head>
+  <body>
+    <main>
+      <h1>Workflow Recorder</h1>
+      <p>Turn one successful browser run into reusable steps.</p>
+      <form>
+        <label>Workflow name <input name="name" value="Lead enrichment"></label>
+        <label>Recorded steps <textarea name="steps">Open the account\nLook up the company\nSave the employee count</textarea></label>
+        <button type="submit">Create replay plan</button>
+      </form>
+      <pre id="output"></pre>
+    </main>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

@@ -1,15 +1,28 @@
 import { createReadStream } from 'node:fs';
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
+import { buildEvidenceBundle, ingestEvidenceFiles } from './evidence-ingestion.mjs';
+import { createRun, failInterruptedRuns, readRun, updateRun } from './run-store.mjs';
+import { verifyReportProofs } from '../src/proof-verification.js';
 
 const root = new URL('../', import.meta.url).pathname;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
-const maxBodyBytes = 1_000_000;
+const maxBodyBytes = 12_000_000;
 const executions = new Map();
+const executionWrites = new Map();
 let scopeWorkflowRunning = false;
+
+function persistExecution(execution) {
+  const previous = executionWrites.get(execution.id) || Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(() => updateRun(execution.id, { status: execution.status, execution }));
+  executionWrites.set(execution.id, next);
+  return next;
+}
 
 async function loadDotEnv(filepath) {
   try {
@@ -27,20 +40,28 @@ async function loadDotEnv(filepath) {
 await loadDotEnv(join(root, '.env'));
 const port = Number(process.env.PORT || 4173);
 
+function buildRunner() {
+  return process.env.SIGNAL_EXECUTION_RUNNER === 'codex' ? 'codex' : 'claude';
+}
+
 function executionConfig() {
   const repo = process.env.SIGNAL_EXECUTION_REPO;
   const remote = process.env.SIGNAL_EXECUTION_REMOTE || 'origin';
   const enabled = process.env.SIGNAL_EXECUTION_ENABLED === '1' && Boolean(repo);
   const deliveryReviewEnabled = enabled && process.env.SIGNAL_DELIVERY_REVIEW_ENABLED === '1';
+  const runner = buildRunner();
   return {
     enabled,
+    runner,
+    runnerName: runner === 'codex' ? 'Codex CLI' : 'Claude Code',
     deliveryReviewEnabled,
     deliveryReviewRequired: deliveryReviewEnabled && process.env.SIGNAL_DELIVERY_REVIEW_REQUIRED === '1',
     repo: repo ? repo.split('/').at(-1) : null,
     remote,
+    prMode: process.env.SIGNAL_EXECUTION_PR_MODE === 'local' ? 'local review branch' : 'GitHub pull request',
     base: process.env.SIGNAL_EXECUTION_BASE || 'main',
     message: enabled
-      ? `Trusted repository execution is enabled. Signal will branch from ${remote}/${process.env.SIGNAL_EXECUTION_BASE || 'main'}.`
+      ? `Trusted repository execution is enabled. Signal will branch from ${remote}/${process.env.SIGNAL_EXECUTION_BASE || 'main'} and create a ${process.env.SIGNAL_EXECUTION_PR_MODE === 'local' ? 'local review branch' : 'GitHub pull request'}.`
       : 'Execution is disabled. Configure SIGNAL_EXECUTION_ENABLED=1 and SIGNAL_EXECUTION_REPO on the local server to dispatch code, tests, and pull requests.'
   };
 }
@@ -81,7 +102,7 @@ async function runnerStatus() {
       {
         id: 'codex',
         name: 'Codex',
-        availableForBuilds: true,
+        availableForBuilds: buildRunner() === 'codex',
         installed: codex.code !== -1,
         connected: codex.code === 0 && /logged in/i.test(codexStatus),
         detail: codex.code === -1 ? 'Codex CLI is not installed.' : codex.code === 0 ? 'Connected on this Mac.' : 'Not connected on this Mac.'
@@ -89,7 +110,7 @@ async function runnerStatus() {
       {
         id: 'claude',
         name: 'Claude Code',
-        availableForBuilds: false,
+        availableForBuilds: buildRunner() === 'claude',
         installed: claude.code !== -1,
         connected: Boolean(claudeState?.loggedIn),
         detail: claude.code === -1 ? 'Claude Code is not installed.' : claudeState?.loggedIn ? 'Connected on this Mac.' : 'Not connected on this Mac.'
@@ -114,7 +135,7 @@ async function readBody(request) {
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > maxBodyBytes) throw new Error('Evidence bundle is larger than 1 MB.');
+    if (size > maxBodyBytes) throw new Error('Request body is larger than 12 MB.');
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -131,14 +152,31 @@ async function runAnalyzeApi(request, response) {
   }
 
   scopeWorkflowRunning = true;
+  let runRecord;
+  let runDir;
   try {
     const raw = await readBody(request);
     const parsed = raw.trim() ? JSON.parse(raw) : {};
-    const evidence = String(parsed.evidence || '').trim()
-      || await readFile(join(root, 'data/sample-evidence.txt'), 'utf8');
-    const runDir = await mkdtemp(join(tmpdir(), 'signal-room-'));
+    const uploadedSources = await ingestEvidenceFiles(Array.isArray(parsed.files) ? parsed.files : []);
+    const fallbackEvidence = uploadedSources.length || String(parsed.evidence || '').trim()
+      ? String(parsed.evidence || '').trim()
+      : await readFile(join(root, 'data/sample-evidence.txt'), 'utf8');
+    const evidence = buildEvidenceBundle({
+      brief: String(parsed.brief || ''),
+      evidence: fallbackEvidence,
+      sources: uploadedSources
+    });
+    runRecord = await createRun({
+      kind: 'scope',
+      status: 'running',
+      brief: String(parsed.brief || '').trim(),
+      evidence: uploadedSources.map(({ id, name, kind, mimeType, size, sha256 }) => ({ id, name, kind, mimeType, size, sha256 })),
+      parsedEvidence: uploadedSources.map(({ id, name, kind, content }) => ({ id, name, kind, content })),
+      provenance: { mode: 'live', runner: 'rocketride' }
+    });
+    runDir = await mkdtemp(join(tmpdir(), 'signal-room-'));
     const inputPath = join(runDir, 'evidence.txt');
-    const outputPath = join(root, 'data/live-report.json');
+    const outputPath = join(runDir, 'live-report.json');
     await writeFile(inputPath, `${evidence}\n`, 'utf8');
 
     const child = spawn(process.execPath, [
@@ -156,8 +194,10 @@ async function runAnalyzeApi(request, response) {
 
     const code = await new Promise(resolve => child.on('close', resolve));
     if (code !== 0) {
+      await updateRun(runRecord.id, { status: 'failed', error: stderr.trim() || stdout.trim() || 'RocketRide did not produce a report.' });
       sendJson(response, 502, {
         ok: false,
+        runId: runRecord.id,
         message: 'RocketRide did not produce a live report.',
         stdout: stdout.trim(),
         stderr: stderr.trim()
@@ -165,14 +205,25 @@ async function runAnalyzeApi(request, response) {
       return;
     }
 
-    const report = JSON.parse(await readFile(outputPath, 'utf8'));
-    sendJson(response, 200, { ok: true, stdout: stdout.trim(), report });
+    const report = verifyReportProofs(JSON.parse(await readFile(outputPath, 'utf8')));
+    report.provenance = { ...(report.provenance || {}), runId: runRecord.id };
+    await updateRun(runRecord.id, {
+      status: 'complete',
+      completedAt: new Date().toISOString(),
+      report,
+      provenance: report.provenance
+    });
+    await writeFile(join(root, 'data/live-report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    sendJson(response, 200, { ok: true, runId: runRecord.id, stdout: stdout.trim(), report });
   } catch (error) {
+    if (runRecord) await updateRun(runRecord.id, { status: 'failed', error: error instanceof Error ? error.message : String(error) }).catch(() => {});
     sendJson(response, 400, {
       ok: false,
+      runId: runRecord?.id,
       message: error instanceof Error ? error.message : String(error)
     });
   } finally {
+    if (runDir) await rm(runDir, { recursive: true, force: true });
     scopeWorkflowRunning = false;
   }
 }
@@ -185,15 +236,18 @@ async function startExecution(request, response) {
   }
   try {
     const payload = JSON.parse(await readBody(request));
-    const title = String(payload.title || 'Signal build mission').trim().slice(0, 120);
-    const brief = String(payload.brief || '').trim().slice(0, 20_000);
+    const mission = payload.mission && typeof payload.mission === 'object' ? payload.mission : payload;
+    const title = String(mission.title || 'Signal build mission').trim().slice(0, 120);
+    const brief = String(mission.brief || '').trim().slice(0, 20_000);
     if (!brief) throw new Error('A mission brief is required before implementation can start.');
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const runRecord = await createRun({ kind: 'implementation', status: 'queued', mission });
+    const id = runRecord.id;
     const runDir = await mkdtemp(join(tmpdir(), 'signal-execution-'));
     const inputPath = join(runDir, 'mission.json');
-    await writeFile(inputPath, JSON.stringify({ title, brief }, null, 2));
+    await writeFile(inputPath, JSON.stringify({ ...mission, title, brief }, null, 2));
     const execution = { id, status: 'queued', detail: 'Preparing the trusted repository.', logs: [], prUrl: null };
     executions.set(id, execution);
+    await persistExecution(execution);
     const child = spawn(process.execPath, [
       join(root, 'scripts/signal-execute.mjs'), '--input', inputPath, '--id', id
     ], { cwd: root, env: process.env });
@@ -209,19 +263,31 @@ async function startExecution(request, response) {
           execution.status = event.phase;
           execution.detail = event.detail;
           execution.logs.push(event);
+          if (event.deliveryReview) execution.deliveryReview = event.deliveryReview;
+          if (event.reviewBranch) execution.reviewBranch = event.reviewBranch;
           if (event.phase === 'complete' && /^https:\/\//.test(event.detail)) execution.prUrl = event.detail;
+          void persistExecution(execution);
         } catch { /* Ignore non-structured command output. */ }
       });
     });
-    child.stderr.on('data', chunk => { execution.logs.push({ phase: 'stderr', detail: chunk.toString().slice(0, 2000) }); });
+    child.stderr.on('data', chunk => {
+      execution.logs.push({ phase: 'stderr', detail: chunk.toString().slice(0, 2000) });
+      void persistExecution(execution);
+    });
     child.on('close', code => {
       if (code === 0) {
         execution.status = 'complete';
-        execution.detail = execution.prUrl || 'The coding run completed.';
+        const completed = execution.logs.findLast(event => event.phase === 'complete');
+        execution.detail = execution.prUrl || completed?.detail || 'The coding run completed.';
       } else {
         execution.status = 'failed';
-        execution.detail = 'The coding run stopped before a pull request was opened.';
+        const stderr = execution.logs.filter(event => event.phase === 'stderr').map(event => event.detail).join('');
+        const reason = stderr.split('\n').map(line => line.trim()).findLast(line => /^\w*Error:/.test(line));
+        execution.detail = reason
+          ? `The coding run stopped: ${reason.replace(/^\w*Error:\s*/, '').slice(0, 400)}`
+          : 'The coding run stopped before a pull request was opened.';
       }
+      void persistExecution(execution);
     });
     sendJson(response, 202, { ok: true, execution });
   } catch (error) {
@@ -231,6 +297,15 @@ async function startExecution(request, response) {
 
 const server = createServer(async (request, response) => {
   const pathname = request.url?.split('?')[0];
+  const runMatch = pathname?.match(/^\/api\/runs\/([a-zA-Z0-9_-]+)$/);
+  if (request.method === 'GET' && runMatch) {
+    try {
+      sendJson(response, 200, { ok: true, run: await readRun(runMatch[1]) });
+    } catch (error) {
+      sendJson(response, error?.code === 'ENOENT' ? 404 : 400, { ok: false, message: 'Run not found.' });
+    }
+    return;
+  }
   if (request.method === 'GET' && pathname === '/api/execution-status') {
     sendJson(response, 200, executionConfig());
     return;
@@ -254,9 +329,12 @@ const server = createServer(async (request, response) => {
     await startExecution(request, response);
     return;
   }
-  const executionMatch = pathname?.match(/^\/api\/executions\/([a-zA-Z0-9-]+)$/);
+  const executionMatch = pathname?.match(/^\/api\/executions\/([a-zA-Z0-9_-]+)$/);
   if (request.method === 'GET' && executionMatch) {
-    const execution = executions.get(executionMatch[1]);
+    let execution = executions.get(executionMatch[1]);
+    if (!execution) {
+      try { execution = (await readRun(executionMatch[1])).execution; } catch { /* handled below */ }
+    }
     if (!execution) sendJson(response, 404, { ok: false, message: 'Execution not found.' });
     else sendJson(response, 200, { ok: true, execution });
     return;
@@ -279,4 +357,6 @@ const server = createServer(async (request, response) => {
   }
 });
 
+const interrupted = await failInterruptedRuns();
+if (interrupted) console.log(`Marked ${interrupted} interrupted run(s) as failed.`);
 server.listen(port, '127.0.0.1', () => console.log(`Signal Room: http://127.0.0.1:${port}`));

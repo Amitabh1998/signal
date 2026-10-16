@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { RocketRideClient } from 'rocketride';
 import { unwrapRocketRideResponse } from '../src/report.js';
+import { createFlowRecorder, deliveryFlowSteps } from '../src/rocketride-flow.js';
+import { numberDiff, verifyCitations } from '../src/diff-citations.js';
 
 async function loadDotEnv(filepath) {
   try {
@@ -29,7 +31,7 @@ function text(value, fallback = '') {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
 }
 
-function normalizeDeliveryReview(candidate) {
+function normalizeDeliveryReview(candidate, diffLines = new Set()) {
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) throw new Error('RocketRide delivery review must be one JSON object.');
   const verdict = ['ready', 'needs-review', 'blocked'].includes(candidate.verdict) ? candidate.verdict : 'needs-review';
   return {
@@ -43,13 +45,15 @@ function normalizeDeliveryReview(candidate) {
       name: text(check?.name, `Check ${index + 1}`),
       status: ['passed', 'failed', 'missing', 'review'].includes(check?.status) ? check.status : 'review',
       detail: text(check?.detail, 'No detail returned.'),
-      evidence: text(check?.evidence, 'No recorded evidence.')
+      evidence: text(check?.evidence, 'No recorded evidence.'),
+      ...verifyCitations(check?.evidence, diffLines)
     })) : [],
     risks: Array.isArray(candidate.risks) ? candidate.risks.slice(0, 12).map((risk, index) => ({
       title: text(risk?.title, `Risk ${index + 1}`),
       severity: ['low', 'medium', 'high'].includes(risk?.severity) ? risk.severity : 'medium',
       detail: text(risk?.detail, 'No detail returned.'),
-      evidence: text(risk?.evidence, 'No recorded evidence.')
+      evidence: text(risk?.evidence, 'No recorded evidence.'),
+      ...verifyCitations(risk?.evidence, diffLines)
     })) : [],
     promises: Array.isArray(candidate.promises) ? candidate.promises.slice(0, 6).map((promise, index) => ({
       agent: text(promise?.agent, `Reviewer ${index + 1}`),
@@ -64,6 +68,10 @@ function normalizeDeliveryReview(candidate) {
   };
 }
 
+function engineTrace({ eventCount, durationMs, steps }) {
+  return { trace: steps, flowEventCount: eventCount, engineDurationMs: durationMs };
+}
+
 const args = parseArgs(process.argv.slice(2));
 await loadDotEnv(resolve('.env'));
 const inputPath = resolve(String(args.input || ''));
@@ -74,17 +82,21 @@ const auth = String(args.auth || process.env.ROCKETRIDE_AUTH || process.env.ROCK
 if (!inputPath) throw new Error('A delivery evidence input is required.');
 
 const deliveryBundle = JSON.parse(await readFile(inputPath, 'utf8'));
-const client = new RocketRideClient({ uri, auth: auth || undefined, persist: false, requestTimeout: 180_000, clientName: 'Signal delivery review', clientVersion: '0.1.0' });
+// Every diff line carries its new-file path:line so reviewers can cite exact lines.
+const { numbered, lines: diffLines } = numberDiff(deliveryBundle.actualDiff);
+const flow = createFlowRecorder(deliveryFlowSteps);
+const client = new RocketRideClient({ uri, auth: auth || undefined, persist: false, requestTimeout: 180_000, clientName: 'Signal delivery review', clientVersion: '0.1.0', onEvent: async message => flow.onEvent(message) });
 let token;
 try {
   console.log(`Connecting to RocketRide at ${uri}…`);
   await client.connect();
   const run = await client.use({ filepath: pipelinePath, pipelineTraceLevel: 'summary', name: 'Signal delivery review' });
   token = run.token;
-  const rawResult = await client.send(token, JSON.stringify(deliveryBundle, null, 2), { name: inputPath.split('/').at(-1), signalDeliveryReview: true }, 'application/json');
+  await client.addMonitor({ token }, ['flow']);
+  const rawResult = await client.send(token, JSON.stringify({ ...deliveryBundle, actualDiff: numbered }, null, 2), { name: inputPath.split('/').at(-1), signalDeliveryReview: true }, 'application/json');
   if (!rawResult) throw new Error('RocketRide returned no delivery review.');
-  const review = normalizeDeliveryReview(unwrapRocketRideResponse(rawResult));
-  review.provenance = { engineUri: uri, pipeline: pipelinePath.split('/').at(-1), pipelineTraceLevel: 'summary', taskTokenPrefix: token.slice(0, 10), importedFrom: inputPath.split('/').at(-1) };
+  const review = normalizeDeliveryReview(unwrapRocketRideResponse(rawResult), diffLines);
+  review.provenance = { engineUri: uri, pipeline: pipelinePath.split('/').at(-1), pipelineTraceLevel: 'summary', taskTokenPrefix: token.slice(0, 10), importedFrom: inputPath.split('/').at(-1), ...engineTrace(flow.summarize()) };
   await writeFile(outputPath, `${JSON.stringify(review, null, 2)}\n`, 'utf8');
   console.log(`Live RocketRide delivery review written to ${outputPath}`);
 } finally {

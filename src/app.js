@@ -1,5 +1,6 @@
 import { normalizeReport } from './report.js';
 import { scenarioLibrary, getScenario } from './scenarios.js';
+import { verifyReportProofs } from './proof-verification.js';
 
 const $ = selector => document.querySelector(selector);
 let selectedScenario = scenarioLibrary[0];
@@ -9,16 +10,19 @@ let localLiveReport;
 let tourIndex = 0;
 let displayedSources = [];
 let stagedEvidenceText = '';
+let stagedEvidenceFiles = [];
 let attachedFiles = [];
 let proofMode = true;
 let currentMission;
 let executionPoll;
 let scopeReportReady = false;
+let currentRunId;
 const rocketRidePipeline = [
   { label: 'Read sources', detail: 'processing', type: 'step' },
   { label: 'Customer Advocate', detail: 'specialist role', type: 'role' },
   { label: 'Skeptic', detail: 'specialist role', type: 'role' },
   { label: 'Product Strategist', detail: 'specialist role', type: 'role' },
+  { label: 'Promise Judge', detail: 'independent review', type: 'role' },
   { label: 'Synthesize', detail: 'reconcile', type: 'step' },
   { label: 'Check commitments', detail: 'validate', type: 'step' },
   { label: 'Link proof', detail: 'trace', type: 'step' }
@@ -52,7 +56,9 @@ function renderAttachmentList() {
 
 function missionTitleFromRequest(request) {
   const firstLine = String(request).split(/\n|[.!?]/)[0].trim().replace(/^(build|create|make)\s+/i, '');
-  return firstLine ? firstLine.slice(0, 72) : 'Microapp request';
+  if (!firstLine) return 'Microapp request';
+  if (firstLine.length <= 72) return firstLine;
+  return `${firstLine.slice(0, 72).replace(/\s+\S*$/, '')}…`;
 }
 
 function renderPreparedInputs() {
@@ -80,6 +86,7 @@ function renderFactoryEmpty() {
   $('#localBriefRequest').textContent = '';
   $('#localBriefContext').textContent = '';
   attachedFiles = [];
+  stagedEvidenceFiles = [];
   renderAttachmentList();
   $('#scopeRunNotice').hidden = true;
   $('.factory-output').hidden = true;
@@ -93,6 +100,7 @@ function renderFactoryEmpty() {
   $('#createMissionReviewButton').disabled = false;
   $('#createMissionReviewButton').innerHTML = '<span class="button-spark">↗</span><span>Create build mission</span>';
   currentMission = undefined;
+  currentRunId = undefined;
   scopeReportReady = false;
 }
 
@@ -144,6 +152,27 @@ function createBuildMission(event) {
   }
   const button = $('#createMissionButton');
   const reviewButton = event?.currentTarget;
+  currentMission = {
+    ...currentMission,
+    schemaVersion: 1,
+    runId: currentRunId,
+    scopeReportId: currentReport.reportId,
+    recommendation: currentReport.recommendation,
+    contradiction: currentReport.contradiction,
+    experiment: currentReport.experiment,
+    acceptanceCriteria: [
+      `Implement the approved recommendation: ${currentReport.recommendation.title}`,
+      `Preserve the primary constraint: ${currentReport.contradiction.title}`,
+      `Make the result measurable using: ${currentReport.experiment.metric}`,
+      'Run the repository test and build commands successfully before review.'
+    ],
+    evidence: currentReport.proofs.map(proof => ({
+      claim: proof.claim,
+      sourceId: proof.sourceId,
+      sourceName: proof.sourceName,
+      verification: proof.verification?.status || 'source-unavailable'
+    }))
+  };
   $('#missionState').classList.add('created');
   $('#missionState').innerHTML = '<i></i><span>Mission prepared for a repository</span>';
   $('#missionName').textContent = `${currentMission.title} / mission prepared`;
@@ -159,13 +188,23 @@ function createBuildMission(event) {
   });
   $('#buildMission').hidden = false;
   $('#buildMission').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  prepareExecutionStatus();
-  showToast('Build mission prepared. Connect a repository to hand this bounded task to a coding agent.', 6200);
+  prepareExecutionStatus().then(config => {
+    if (config?.prMode === 'local review branch') {
+      $('#missionDescription').textContent = 'The brief, build queue, risk, and verification gates are packaged. Signal creates an isolated branch, dispatches the coding agent, runs tests and build, then pushes a local review branch.';
+    }
+    showToast(config?.enabled
+    ? `Build mission prepared. Run implementation to hand it to ${config.runnerName} on ${config.repo}.`
+    : 'Build mission prepared. Connect a repository to hand this bounded task to a coding agent.', 6200);
+  });
 }
+
+const executionPhaseOrder = ['preflight', 'implementing', 'testing', 'delivery-review', 'opening-pr'];
+const executionPhaseIndex = { 'delivery-review-failed': 3, 'review-ready': 4, complete: 5 };
 
 function setExecutionState(execution) {
   const status = execution?.status || 'disabled';
   const phaseCopy = {
+    ready: 'Ready to run on the trusted repository.',
     queued: 'Queued',
     preflight: 'Checking repository',
     implementing: 'Coding runner is working',
@@ -174,23 +213,71 @@ function setExecutionState(execution) {
     'delivery-review-failed': 'RocketRide delivery review was unavailable',
     'review-ready': 'Committing tested change',
     'opening-pr': 'Opening pull request',
-    complete: 'Pull request ready',
+    complete: 'Ready for human review',
     failed: 'Execution failed',
-    disabled: 'Execution disabled'
+    disabled: 'Execution is disabled until a trusted repository is configured.'
   };
+  // The furthest phase this run reached, so a failure keeps completed stages visible.
+  const reached = Math.max(-1, ...(execution?.logs || []).map(event => executionPhaseIndex[event.phase] ?? executionPhaseOrder.indexOf(event.phase)));
+  const current = status === 'failed' ? reached : executionPhaseIndex[status] ?? executionPhaseOrder.indexOf(status);
   $('#executionState').textContent = execution?.detail || phaseCopy[status] || status;
-  $('#executionPr').textContent = execution?.prUrl ? 'Ready for review' : status === 'opening-pr' ? 'Creating' : 'Not created';
-  $('#executionTests').textContent = ['delivery-review', 'delivery-review-failed', 'review-ready', 'opening-pr', 'complete'].includes(status) ? 'Passed' : 'Tests + build';
+  $('#executionPr').textContent = execution?.prUrl
+    ? 'Ready for review'
+    : execution?.reviewBranch || (status === 'opening-pr' ? 'Creating' : 'Not created');
+  $('#executionTests').textContent = current > 2 ? 'Passed' : status === 'failed' && reached === 2 ? 'Failed' : 'Tests + build';
   document.querySelectorAll('.mission-stages li').forEach((stage, index) => {
-    stage.classList.toggle('prepared', index === 0 || (index === 1 && !['disabled', 'queued', 'preflight'].includes(status)) || (index === 2 && ['delivery-review', 'delivery-review-failed', 'review-ready', 'opening-pr', 'complete'].includes(status)) || (index === 3 && status === 'complete'));
+    stage.classList.toggle('prepared', index === 0 || (index === 1 && current >= 1) || (index === 2 && current > 2) || (index === 3 && status === 'complete'));
   });
-  const phaseOrder = ['preflight', 'implementing', 'testing', 'delivery-review', 'opening-pr'];
-  const activePhase = status === 'review-ready' ? 'opening-pr' : status;
-  const activeIndex = phaseOrder.indexOf(activePhase);
   document.querySelectorAll('[data-execution-phase]').forEach((item, index) => {
-    item.classList.toggle('complete', activeIndex > index || status === 'complete');
-    item.classList.toggle('active', activeIndex === index && status !== 'complete');
+    item.classList.toggle('complete', status === 'complete' || index < current);
+    item.classList.toggle('active', index === current && !['complete', 'failed'].includes(status));
+    item.classList.toggle('failed', status === 'failed' && index === current);
   });
+  renderDeliveryReview(execution?.deliveryReview);
+}
+
+const verdictCopy = { ready: 'READY FOR REVIEW', 'needs-review': 'NEEDS REVIEW', blocked: 'BLOCKED' };
+
+function renderCitations(finding) {
+  if (!finding.citations?.length) return '<span class="citation-note">No line citation</span>';
+  return finding.citations.map(citation => `<code class="citation ${finding.citationVerified ? 'verified' : 'unverified'}">${escapeHtml(citation)}</code>`).join('')
+    + `<span class="citation-note">${finding.citationVerified ? 'found in the actual diff' : 'not found in the actual diff'}</span>`;
+}
+
+function renderDeliveryReview(review) {
+  const panel = $('#deliveryReviewPanel');
+  if (!review) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  const findings = [
+    ...(review.checks || []).map(check => ({ ...check, title: check.name, status: check.status, statusLabel: check.status })),
+    ...(review.risks || []).map(risk => ({ ...risk, status: risk.severity, statusLabel: `${risk.severity} risk` }))
+  ];
+  const steps = review.provenance?.trace || [];
+  panel.innerHTML = `
+    <div class="delivery-review-head">
+      <div>
+        <span class="eyebrow">delivery-review.pipe · live run</span>
+        <h3>RocketRide read the actual diff</h3>
+        <p>${escapeHtml(review.summary || '')}</p>
+      </div>
+      <div class="delivery-verdict ${escapeHtml(review.verdict)}">
+        <span>Verdict</span>
+        <strong>${escapeHtml(verdictCopy[review.verdict] || review.verdict)}</strong>
+        <small>The best verdict is "ready for human review". It never approves a release.</small>
+      </div>
+    </div>
+    <ul class="delivery-findings">${findings.map(finding => `
+      <li>
+        <div><strong>${escapeHtml(finding.title)}</strong><p>${escapeHtml(finding.detail || '')}</p>${renderCitations(finding)}</div>
+        <span class="finding-status ${escapeHtml(finding.status)}">${escapeHtml(finding.statusLabel)}</span>
+      </li>`).join('')}
+    </ul>
+    ${steps.length ? `<p class="delivery-engine">Executed by RocketRide: ${steps.map(step => escapeHtml(step.label)).join(' → ')} · ${formatSeconds(review.provenance.engineDurationMs)}</p>` : ''}
+  `;
+  panel.hidden = false;
 }
 
 function setFactoryRoleState(status = 'idle') {
@@ -213,14 +300,19 @@ async function prepareExecutionStatus() {
   try {
     const response = await fetch('/api/execution-status', { cache: 'no-store' });
     const config = await response.json();
+    const localReview = config.prMode === 'local review branch';
     $('#executionRepo').textContent = config.repo || 'Not connected';
-    $('#executionRunner').textContent = config.enabled ? 'Coding agent (Codex CLI)' : 'Not enabled';
+    $('#executionRunner').textContent = config.enabled ? `Coding agent (${config.runnerName || 'Claude Code'})` : 'Not enabled';
     $('#executionDeliveryReview').textContent = config.deliveryReviewEnabled
-      ? config.deliveryReviewRequired ? 'Required before PR' : 'Enabled before PR'
+      ? `${config.deliveryReviewRequired ? 'Required' : 'Enabled'} before ${localReview ? 'review branch' : 'PR'}`
       : 'Not enabled';
     $('#executionDescription').textContent = config.message;
     $('#dispatchExecutionButton').disabled = !config.enabled || !currentMission || !scopeReportReady;
-    setExecutionState();
+    $('#executionPrLabel').textContent = localReview ? 'Review branch' : 'Pull request';
+    $('#executionTitle').textContent = localReview ? 'Code, test, and review branch' : 'Code, test, and pull request';
+    $('#openReviewDetail').textContent = localReview ? 'Commit the tested diff and push a local review branch.' : 'Commit the tested diff and open a pull request.';
+    setExecutionState(config.enabled ? { status: 'ready' } : undefined);
+    return config;
   } catch {
     $('#executionDescription').textContent = 'Execution status is unavailable. Start Signal through the local server to connect a trusted repository.';
     $('#dispatchExecutionButton').disabled = true;
@@ -262,7 +354,7 @@ async function dispatchExecution() {
     const response = await fetch('/api/execute', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: currentMission.title, brief: currentMission.brief })
+      body: JSON.stringify({ mission: currentMission })
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.message || payload.message || 'Could not start implementation.');
@@ -281,7 +373,7 @@ function renderConnections(runners) {
     const stateLabel = !runner.installed ? 'Not installed' : runner.connected ? 'Connected' : 'Sign-in needed';
     const capability = runner.availableForBuilds
       ? 'Available for Signal build missions.'
-      : 'Connection can be prepared now. Signal build dispatch currently uses Codex.';
+      : 'Signed in, but this Signal server sends build missions to the other coding agent.';
     return `
       <article class="connection-row">
         <div>
@@ -342,7 +434,7 @@ function renderSources(sources) {
   if (stagedFiles.length) {
     contextHint.textContent = `${stagedFiles.length} file${stagedFiles.length === 1 ? '' : 's'} will be included in this scope workflow.`;
   } else {
-    contextHint.textContent = 'Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, and CSV are supported.';
+    contextHint.textContent = 'Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, JSONL, CSV, and XLSX are supported.';
   }
 }
 
@@ -377,8 +469,9 @@ function renderScenarios() {
 function selectScenario(id, options = {}) {
   selectedScenario = getScenario(id);
   stagedEvidenceText = selectedScenario.evidenceText;
+  stagedEvidenceFiles = [];
   renderScenarioOutcome(selectedScenario);
-  renderReport(selectedScenario.report);
+  renderReport(normalizeReport(verifyReportProofs(selectedScenario.report)));
   setProofMode(true);
   renderScenarios();
   $('#truthBanner').hidden = false;
@@ -387,6 +480,7 @@ function selectScenario(id, options = {}) {
   $('.truth-banner p').innerHTML = '<strong>This is a deterministic seed scenario.</strong> Use it to demo expected outcomes, or run the same evidence through RocketRide from the CLI.';
   if (options.announce) {
     showToast(`Loaded ${selectedScenario.title}. The evidence is staged for Run RocketRide.`, 5200);
+    scrollToReview();
   }
 }
 
@@ -477,7 +571,7 @@ function renderProofs(proofs = []) {
   $('#proofList').innerHTML = proofs.length
     ? proofs.map((proof, index) => `
       <button class="proof-item ${escapeHtml(proof.status)}" type="button" data-proof-index="${index}">
-        <span>${escapeHtml(proof.status)}</span>
+        <span>${escapeHtml(proof.status)} · ${escapeHtml(proof.verification?.status || 'unchecked')}</span>
         <strong>${escapeHtml(proof.claim)}</strong>
         <small>${escapeHtml(proof.agent)} · ${escapeHtml(proof.sourceName || proof.sourceId || 'source')}</small>
         <q>${escapeHtml(proof.quote)}</q>
@@ -494,6 +588,133 @@ function renderProofs(proofs = []) {
   });
 }
 
+function engineTraceOf(report) {
+  const trace = report?.provenance?.trace;
+  return Array.isArray(trace) && trace.length && trace.every(step => typeof step?.label === 'string' && Number.isFinite(step?.startMs)) ? trace : [];
+}
+
+function formatSeconds(ms) {
+  return `${(Number(ms || 0) / 1000).toFixed(1)}s`;
+}
+
+function renderExecutionTrace(report) {
+  const steps = engineTraceOf(report);
+  const events = steps.length
+    ? steps.map(step => ({ title: step.label, detail: [`+${formatSeconds(step.startMs)}`, `ran ${formatSeconds(step.durationMs)}`, `${step.events} lane events`, step.error].filter(Boolean).join(' · ') }))
+    : (report.pipeline || []).map(step => ({ title: step.label, detail: step.detail }));
+  $('#traceBody').innerHTML = '<div class="trace-line"></div>' + events.map((event, index) => `
+    <div class="trace-event ${index === events.length - 1 ? 'is-final' : ''}">
+      <b>${String(index + 1).padStart(2, '0')}</b>
+      <div><span>${escapeHtml(event.title)}</span><p>${escapeHtml(event.detail || 'Declared step')}</p></div>
+    </div>
+  `).join('');
+  $('#traceProvenance').textContent = steps.length
+    ? `Live RocketRide trace · ${report.provenance.flowEventCount || 0} flow events · ${formatSeconds(report.provenance.engineDurationMs)}`
+    : 'Steps declared by the report — no engine event trace was embedded';
+  $('#traceLevel').textContent = `pipelineTraceLevel: ${report.provenance?.pipelineTraceLevel || 'none'}`;
+}
+
+// The workflow strip and timeline come from RocketRide flow events when the
+// report carries them; otherwise the strip shows the declared steps only.
+function renderEngineTrace(report) {
+  const steps = engineTraceOf(report);
+  const isLive = report.mode === 'live';
+  if (!steps.length) {
+    renderPipeline(isLive ? rocketRidePipeline : report.pipeline, 'done');
+    $('#runtimeLabel').textContent = isLive ? 'declared steps · no engine trace' : 'demo result';
+    $('#engineTimeline').hidden = true;
+    return;
+  }
+  const total = Math.max(Number(report.provenance.engineDurationMs) || 0, ...steps.map(step => step.startMs + step.durationMs), 1);
+  renderPipeline(steps.map(step => ({ label: step.label, detail: `+${formatSeconds(step.startMs)}`, type: step.kind === 'role' ? 'role' : 'step' })), 'done');
+  $('#runtimeLabel').textContent = `executed by RocketRide · ${formatSeconds(total)}`;
+  $('#engineTimelineLabel').textContent = `${formatSeconds(total)} · ${report.provenance.flowEventCount || 0} RocketRide flow events`;
+  $('#engineTimelineRows').innerHTML = steps.map(step => `
+    <li>
+      <span>${escapeHtml(step.label)}</span>
+      <div class="timeline-track"><i style="left:${(step.startMs / total * 100).toFixed(2)}%;width:${Math.max(0.8, step.durationMs / total * 100).toFixed(2)}%"></i></div>
+      <em>+${formatSeconds(step.startMs)}</em>
+    </li>
+  `).join('');
+  $('#engineTimeline').hidden = false;
+}
+
+function parseCsvRows(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quoted) {
+      if (char === '"' && text[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (char === '"') quoted = false;
+      else cell += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ',') { row.push(cell); cell = ''; }
+    else if (char === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (char !== '\r') cell += char;
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows.filter(cells => cells.some(value => value.trim()));
+}
+
+// Spreadsheets are read into rows by Signal's evidence ingestion before the
+// run; this shows exactly the rows RocketRide's roles received.
+function renderParsedSheets(report) {
+  const sheets = (report.sources || []).flatMap(source => String(source.content || '')
+    .split(/\n\n(?=SHEET: )/)
+    .filter(section => section.startsWith('SHEET: '))
+    .map(section => ({ source, section })));
+  const panel = $('#parsedEvidence');
+  if (!sheets.length) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  panel.innerHTML = sheets.map(({ source, section }) => {
+    const [titleLine, ...lines] = section.split('\n');
+    const [header = [], ...body] = parseCsvRows(lines.join('\n'));
+    const columns = header.slice(0, 7);
+    return `
+      <div class="parsed-sheet">
+        <div class="pipeline-title">
+          <strong>Parsed spreadsheet evidence</strong>
+          <span>${escapeHtml(source.id)} · ${escapeHtml(titleLine.replace(/^SHEET:\s*/, ''))} · ${body.length} rows</span>
+        </div>
+        <p>Signal read this workbook into rows before the run; RocketRide's specialist roles received exactly these rows.</p>
+        <div class="parsed-table-wrap">
+          <table>
+            <thead><tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead>
+            <tbody>${body.slice(0, 8).map(cells => `<tr>${columns.map((_, index) => `<td>${escapeHtml(cells[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+  panel.hidden = false;
+}
+
+const specialistRoles = [
+  { name: 'Customer Advocate', pattern: /customer|advocate/i },
+  { name: 'Skeptic', pattern: /skeptic|sceptic/i },
+  { name: 'Product Strategist', pattern: /strateg/i }
+];
+
+function wrapNodeLabel(text, maxChars, maxLines) {
+  const lines = [];
+  for (const word of String(text).split(/\s+/).filter(Boolean)) {
+    const last = lines.at(-1);
+    if (last !== undefined && `${last} ${word}`.length <= maxChars) lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word);
+  }
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, maxLines);
+  kept[maxLines - 1] = `${kept[maxLines - 1].slice(0, maxChars - 1)}…`;
+  return kept;
+}
+
 function displayTraceLabel(value, fallback, maxWords = 3) {
   const words = String(value || fallback).replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean);
   return words.slice(0, maxWords).join(' ') || fallback;
@@ -506,27 +727,23 @@ function buildDecisionTraceMap(report) {
     if (source && !proofSources.some(item => item.id === source.id)) proofSources.push(source);
   });
   const sources = (proofSources.length ? proofSources : report.sources || []).slice(0, 5);
-  const specialistNames = [];
-  (report.proofs || []).forEach(proof => {
-    const name = proof.agent || 'Specialist';
-    if (!specialistNames.some(item => item.toLowerCase() === name.toLowerCase())) specialistNames.push(name);
-  });
-  (report.lenses || []).forEach(lens => {
-    if (!specialistNames.some(item => item.toLowerCase() === lens.name.toLowerCase())) specialistNames.push(lens.name);
-  });
-  const agents = specialistNames.slice(0, 3);
+  // Finding nodes are the three specialist roles only; models sometimes put a
+  // quoted person in a proof's agent field, and that is not a finding.
+  const roleOf = name => specialistRoles.find(role => role.pattern.test(String(name || '')))?.name;
+  const agents = specialistRoles.map(role => role.name);
   const distribute = (items, x, start, end) => items.map((item, index) => ({ item, x, y: items.length === 1 ? (start + end) / 2 : start + ((end - start) * index) / (items.length - 1) }));
   const nodes = [
-    ...distribute(sources, 105, 80, 400).map(({ item, x, y }) => ({ id: `source_${item.id}`, label: displayTraceLabel(item.name, 'Source', 2), sub: item.kind || 'evidence', type: 'source', x, y, radius: 34 })),
-    ...distribute(agents, 380, 130, 350).map(({ item, x, y }) => ({ id: `agent_${item.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, label: displayTraceLabel(item, 'Specialist'), sub: 'finding', type: 'agent', x, y, radius: 38 })),
-    { id: 'decision', label: displayTraceLabel(report.recommendation?.title, 'Recommendation'), sub: 'recommendation', type: 'decision', x: 650, y: 240, radius: 52 }
+    ...distribute(sources, 105, 80, 400).map(({ item, x, y }) => ({ id: `source_${item.id}`, label: displayTraceLabel(item.name, 'Source', 2), title: item.name, sub: /\.[a-z0-9]+$/i.test(item.id) ? item.id.split('.').pop() : item.kind || 'evidence', type: 'source', x, y, radius: 34 })),
+    ...distribute(agents, 380, 130, 350).map(({ item, x, y }) => ({ id: `agent_${item.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, label: item, title: item, sub: 'finding', type: 'agent', x, y, radius: 38 })),
+    { id: 'decision', label: displayTraceLabel(report.recommendation?.title, 'Recommendation', 6), title: report.recommendation?.title, sub: 'recommendation', type: 'decision', x: 650, y: 240, radius: 52 }
   ];
   const agentId = name => `agent_${String(name || 'Specialist').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
   const visibleSourceIds = new Set(sources.map(source => source.id));
   const edges = (report.proofs || []).flatMap(proof => {
     const source = findProofSource(proof);
     if (!source || !visibleSourceIds.has(source.id)) return [];
-    return [{ from: `source_${source.id}`, to: agentId(proof.agent), kind: proof.status === 'challenged' ? 'challenges' : 'supports' }];
+    const role = roleOf(proof.agent);
+    return [{ from: `source_${source.id}`, to: role ? agentId(role) : 'decision', kind: ['challenged', 'blocked'].includes(proof.status) ? 'challenges' : 'supports' }];
   });
   agents.forEach(name => {
     edges.push({ from: agentId(name), to: 'decision', kind: /skeptic|challenge/i.test(name) ? 'challenges' : 'supports' });
@@ -561,14 +778,25 @@ function renderSemanticMap(map) {
 
     const circle = document.createElementNS(namespace, 'circle');
     circle.setAttribute('r', String(node.radius));
+    // Wrap the label inside its circle: roughly 1.6 characters per unit of radius.
+    const lines = wrapNodeLabel(node.label, Math.floor(node.radius / 3.2), node.type === 'decision' ? 3 : 2);
     const label = document.createElementNS(namespace, 'text');
-    label.setAttribute('y', node.sub ? '-2' : '3');
-    label.textContent = node.label;
+    const lineHeight = 9;
+    const top = (node.sub ? -4 : 3) - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => {
+      const span = document.createElementNS(namespace, 'tspan');
+      span.setAttribute('x', '0');
+      span.setAttribute('y', String(top + index * lineHeight));
+      span.textContent = line;
+      label.append(span);
+    });
     const sub = document.createElementNS(namespace, 'text');
     sub.setAttribute('class', 'node-sub');
-    sub.setAttribute('y', '13');
+    sub.setAttribute('y', String(top + (lines.length - 1) * lineHeight + 12));
     sub.textContent = node.sub;
-    group.append(circle, label, sub);
+    const tooltip = document.createElementNS(namespace, 'title');
+    tooltip.textContent = node.title || node.label;
+    group.append(tooltip, circle, label, sub);
     group.addEventListener('click', () => selectSemanticNode(node, map));
     svg.appendChild(group);
   });
@@ -581,7 +809,7 @@ function selectSemanticNode(node, map) {
   const adjacent = map.edges.filter(edge => edge.from === node.id || edge.to === node.id);
   const support = adjacent.filter(edge => edge.kind === 'supports').length;
   const challenges = adjacent.filter(edge => edge.kind === 'challenges').length;
-  $('#topologyTitle').textContent = node.label;
+  $('#topologyTitle').textContent = node.title || node.label;
   const typeLabel = node.type === 'decision' ? 'Recommendation' : node.type === 'agent' ? 'Specialist finding' : 'Source evidence';
   $('#topologyBody').textContent = `${typeLabel} with ${adjacent.length} declared paths: ${support} supporting and ${challenges} challenging. Select another node to inspect its evidence trail.`;
   const values = $('.topology-panel dl').querySelectorAll('dd');
@@ -624,14 +852,15 @@ function renderReport(report) {
   $('#reportId').textContent = report.reportId;
   renderSources(report.sources);
   renderSignals(report.signals);
-  renderPipeline(isLive ? rocketRidePipeline : report.pipeline, 'done');
+  renderEngineTrace(report);
+  renderParsedSheets(report);
   renderPromises(report.promises || []);
   renderProofs(report.proofs || []);
+  renderExecutionTrace(report);
   renderSemanticMap(buildDecisionTraceMap(report));
   setFactoryRoleState('complete');
 
   $('#runtimeMode').textContent = isLive ? 'RocketRide result' : 'Demo fixture';
-  $('#runtimeLabel').textContent = isLive ? 'live result' : 'demo result';
 }
 
 function setProofMode(enabled) {
@@ -724,6 +953,23 @@ function loadLocalLiveReport() {
   showReportTruth(localLiveReport, 'local');
   scrollToReview();
   showToast('Loaded the latest successful local RocketRide run. The browser did not call the model again.');
+  void restoreMissionFromRun(localLiveReport);
+}
+
+// A live report can feed a build mission only when the server still holds the
+// completed run record that produced it; imported files stay review-only.
+async function restoreMissionFromRun(report) {
+  const runId = report?.provenance?.runId;
+  if (report?.mode !== 'live' || !runId) return;
+  try {
+    const response = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const { run } = await response.json();
+    if (run?.kind !== 'scope' || run.status !== 'complete' || run.report?.reportId !== report.reportId || !run.brief) return;
+    currentRunId = runId;
+    currentMission = { title: missionTitleFromRequest(run.brief), brief: run.brief, runId };
+    scopeReportReady = true;
+  } catch { /* Without the run record the report stays review-only. */ }
 }
 
 const tourSteps = [
@@ -850,8 +1096,7 @@ async function buildRocketRideInput() {
   const fallback = await fetch('./data/sample-evidence.txt', { cache: 'no-store' })
     .then(response => response.ok ? response.text() : '');
   const context = stagedEvidenceText || fallback;
-  if (!brief) return context;
-  return `MISSION BRIEF (user instruction)\n${brief}\n\nOPTIONAL CONTEXT FILES\n${context}`;
+  return { brief, evidence: stagedEvidenceFiles.length ? '' : context, files: stagedEvidenceFiles };
 }
 
 async function analyzeSelectedScenario() {
@@ -884,11 +1129,11 @@ async function runLiveAnalysis(event) {
   renderPipeline(rocketRidePipeline, 'running');
 
   try {
-    const evidence = await buildRocketRideInput();
+    const input = await buildRocketRideInput();
     const response = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ evidence })
+      body: JSON.stringify(input)
     });
     const payload = await response.json();
     if (response.status === 409 && payload.code === 'scope-workflow-running') {
@@ -900,10 +1145,12 @@ async function runLiveAnalysis(event) {
     const report = normalizeReport(payload.report);
     report.mode = payload.report.mode === 'live' ? 'live' : 'imported';
     report.provenance = payload.report.provenance;
+    currentRunId = payload.runId;
     renderReport(report);
     currentMission = {
       title: missionTitleFromRequest(brief),
-      brief
+      brief,
+      runId: payload.runId
     };
     scopeReportReady = report.mode === 'live';
     $('#loadLiveButton').hidden = true;
@@ -921,14 +1168,16 @@ async function runLiveAnalysis(event) {
     const technicalMessage = error instanceof Error ? error.message : 'The RocketRide scope run failed.';
     const message = /Failed to connect to ws:\/\/localhost:5565/i.test(technicalMessage)
       ? 'RocketRide is offline on this Mac. Start the local engine, then run the workflow again.'
-      : technicalMessage;
+      : error instanceof TypeError && /fetch|network|load failed/i.test(technicalMessage)
+        ? 'Lost the connection to the local Signal server. Restart it with npm run dev, then run the workflow again.'
+        : technicalMessage;
     renderPipeline(currentReport.mode === 'live' ? rocketRidePipeline : currentReport.pipeline, 'done');
     $('#engineStatus').className = 'engine-status failed';
     $('#engineStatus strong').textContent = 'RocketRide live run failed';
     $('#engineStatus span').textContent = message;
     $('#engineStatus code').textContent = 'failed';
     setFactoryRoleState('failed');
-    setScopeRunNotice(`RocketRide could not complete this scope run: ${message}`, 'failed');
+    setScopeRunNotice(`The scope run stopped: ${message}`, 'failed');
     showToast(message, 8000);
   } finally {
     button.disabled = false;
@@ -939,7 +1188,8 @@ async function runLiveAnalysis(event) {
 async function importReport(file) {
   try {
     const raw = JSON.parse(await file.text());
-    const report = normalizeReport(raw);
+    const verified = verifyReportProofs(raw);
+    const report = normalizeReport(verified);
     report.mode = raw.mode === 'live' ? 'live' : 'imported';
     report.provenance = raw.provenance;
     renderReport(report);
@@ -949,6 +1199,15 @@ async function importReport(file) {
   } catch (error) {
     showToast(`Could not import report: ${error.message}`, 6500);
   }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
 }
 
 async function addUnanalyzedFiles(files) {
@@ -964,15 +1223,25 @@ async function addUnanalyzedFiles(files) {
 
   let added;
   try {
-    added = await Promise.all(selected.map(async (file, index) => ({
-      id: `local_${Date.now()}_${index}`,
-      kind: file.name.split('.').pop()?.slice(0, 4).toUpperCase() || 'FILE',
-      name: file.name,
-      meta: `${Math.max(1, Math.round(file.size / 1024))} KB · not analyzed`,
-      content: (await file.text()).slice(0, 100000),
-      contentStatus: 'staged',
-      status: 'pending'
-    })));
+    added = await Promise.all(selected.map(async (file, index) => {
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const isSpreadsheet = ext === 'xlsx';
+      const buffer = await file.arrayBuffer();
+      stagedEvidenceFiles.push({
+        name: file.name,
+        mimeType: file.type || (isSpreadsheet ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/plain'),
+        dataBase64: arrayBufferToBase64(buffer)
+      });
+      return {
+        id: `local_${Date.now()}_${index}`,
+        kind: isSpreadsheet ? 'SHEET' : ext.slice(0, 4).toUpperCase() || 'FILE',
+        name: file.name,
+        meta: `${Math.max(1, Math.round(file.size / 1024))} KB · not analyzed`,
+        content: isSpreadsheet ? 'Binary spreadsheet staged for server-side parsing.' : new TextDecoder().decode(buffer).slice(0, 100000),
+        contentStatus: 'staged',
+        status: 'pending'
+      };
+    }));
   } catch (error) {
     selectedStates.forEach(file => {
       file.detail = 'Could not read this file';
@@ -997,7 +1266,7 @@ async function addUnanalyzedFiles(files) {
   $('#scenarioDecisionType').textContent = 'Custom live run';
   $('#scenarioRisk').textContent = 'No recommendation until the engine analyzes it.';
   $('#scenarioEvidenceMix').textContent = `${added.length} local file${added.length === 1 ? '' : 's'}`;
-  showToast(`${added.length} file${added.length === 1 ? '' : 's'} staged. Click Run RocketRide to analyze them with the local engine.` , 7000);
+  showToast(`${added.length} file${added.length === 1 ? '' : 's'} staged. Click Run scope workflow to analyze them with the local RocketRide engine.`, 7000);
 }
 
 renderScenarios();

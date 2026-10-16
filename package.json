@@ -11,12 +11,17 @@
     "eval": "node scripts/eval.mjs",
     "seed:scenario": "node scripts/seed-scenario.mjs",
     "sources:demo": "node scripts/generate-demo-source-pack.mjs",
+    "demo:target": "node scripts/create-demo-target.mjs",
     "demo:record": "node scripts/create-demo-recording.mjs",
     "analyze:live": "node scripts/rocketride-run.mjs",
     "delivery-review:live": "node scripts/rocketride-delivery-review.mjs",
+    "rocketride:up": "docker compose -f docker-compose.rocketride.yml up -d",
+    "rocketride:down": "docker compose -f docker-compose.rocketride.yml down",
+    "rocketride:logs": "docker compose -f docker-compose.rocketride.yml logs -f rocketride",
     "rocketride:check": "node scripts/rocketride-check.mjs"
   },
   "dependencies": {
+    "read-excel-file": "^9.3.12",
     "rocketride": "1.4.0"
   },
   "engines": {
