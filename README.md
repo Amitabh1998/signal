@@ -1,73 +1,49 @@
-# Signal
+<div align="center">
 
-<p align="center">
-  <img src="./src/assets/hero.png" alt="Signal" width="180" />
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
+  <img alt="Signal" src="docs/assets/logo-light.svg" width="300">
+</picture>
 
-<p align="center">
-  <strong>From product request to evidence-backed scope, tested implementation, and human-reviewed pull request.</strong>
-</p>
+### From product request to reviewed pull request, with the evidence attached.
 
-Signal is a local-first software factory for turning a plain-language product request and supporting evidence into a bounded, reviewable software change.
+**Signal scopes the work before a coding agent writes it, and shows you why.**
 
-It uses [RocketRide](https://github.com/rocketride-org) to run explicit decision workflows before and after implementation. Signal keeps the reasoning visible, separates seeded demonstrations from live runs, and leaves consequential transitions—approving scope, enabling repository access, and reviewing a pull request—to a person.
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![Powered by RocketRide](https://img.shields.io/badge/pipelines-RocketRide-096b6a?style=flat-square)](https://github.com/rocketride-org)
+[![Runtime dependencies: 2](https://img.shields.io/badge/runtime_deps-2-2c6f91?style=flat-square)](package.json)
+[![Status: prototype](https://img.shields.io/badge/status-prototype-b94747?style=flat-square)](#safety-and-current-limits)
 
-> Signal is currently a development prototype. Repository execution is disabled by default and should only be enabled for an explicitly trusted local repository.
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Features](#features) · [Live mode](#run-it-live-with-rocketride) · [Repository execution](#let-it-build-optional) · [FAQ](#faq)
 
-## What Signal does
+<code>npm install && npm run dev</code>
 
-```text
-Product request + evidence
-            │
-            ▼
-   RocketRide scope workflow
-            │
-            ▼
- Evidence-backed recommendation
-   + contradiction + experiment
-            │
-       human approval
-            │
-            ▼
- Isolated coding-agent worktree
-            │
-            ▼
-       tests + build
-            │
-            ▼
- RocketRide delivery review
-            │
-            ▼
- Pull request for human review
-```
+<br />
 
-The project brings planning and delivery into one inspectable flow:
+<img src="docs/assets/signal-home.png" alt="Signal's work-order screen: describe the change, attach supporting files, and run the scope workflow" width="1000" />
 
-- **Scope from evidence.** A Customer Advocate, Skeptic, and Product Strategist each analyze the same request and evidence.
-- **Expose uncertainty.** Recommendations include supporting evidence, counterarguments, confidence, and a measurable next experiment.
-- **Inspect important claims.** Proof links retain source identity and let reviewers open the evidence behind a decision.
-- **Approve before building.** A live scope decision becomes a build mission only after a deliberate human handoff.
-- **Build in isolation.** The optional coding runner works in a temporary Git worktree created from a configured trusted repository.
-- **Review the delivery.** A second RocketRide workflow examines the mission, coding summary, changed files, diff statistics, and recorded quality-gate output before human pull-request review.
+</div>
 
-## Why it is different
+---
 
-Signal is not an AI chat wrapper and RocketRide is not presented as an autonomous agent. Each component has a narrow job and a visible contract.
+> [!NOTE]
+> Signal is a working prototype. The seed scenarios run fully offline. Live scoping needs a RocketRide server, and repository execution stays **off** until you enable it for one repository you trust.
 
-| Principle | How Signal applies it |
-| --- | --- |
-| Evidence before confidence | Important claims point back to supplied source material. |
-| Reversible decisions | The scope workflow proposes the smallest measurable next step. |
-| Honest provenance | Seed scenarios, staged files, imported reports, and live engine results are labeled differently. |
-| Bounded autonomy | Scope approval, repository access, and pull-request review remain human decisions. |
-| Reviewable delivery | Tests, build output, the actual patch, and delivery-review findings travel with the implementation. |
+## The problem
+
+Most AI coding tools start too late. They jump from a one-line prompt straight to a diff, and the questions that matter get skipped: *Is this the right thing to build? What evidence says so? What would prove us wrong? Who signed off?* You end up with code nobody can trace back to a decision.
+
+### How Signal solves it
+
+1. **Scope before code.** Three specialist roles (Customer Advocate, Skeptic, Product Strategist) analyze your request and evidence in parallel, and a synthesis step reconciles them into one decision.
+2. **Evidence you can click.** Every claim in the report links to the passage it came from. The strongest counterargument and a small, measurable next experiment are always included.
+3. **A human at every gate.** A decision becomes a build mission only when you approve it. Code runs only in a repository you configured. The pull request waits for your review.
+4. **Delivery that brings its receipts.** The coding agent works in an isolated worktree. Tests, build output, the diff, and a second RocketRide review that cites exact `path:line` locations go into the pull request with the change.
 
 ## Quick start
 
-Requirements:
-
-- Node.js 20 or newer
-- npm
+**Requirements:** Node.js 20+ and npm.
 
 ```bash
 git clone https://github.com/Amitabh1998/signal.git
@@ -76,202 +52,314 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:4173](http://127.0.0.1:4173). The included seed scenarios work without an external model or RocketRide server. Choose **Guided tour** in the interface, or open `http://127.0.0.1:4173/?tour=1`.
+Open **<http://127.0.0.1:4173>**. No API keys are needed to explore: the bundled seed scenarios render a complete report.
 
-## Run the live RocketRide workflow
+> [!TIP]
+> Click **Guided tour** in the top bar, or open <http://127.0.0.1:4173/?tour=1>, for an eight-step walkthrough of the interface.
 
-A live analysis requires RocketRide Server v3.4.0 or a compatible RocketRide Cloud endpoint. Copy the example environment file and configure the engine connection:
+## How it works
+
+```mermaid
+flowchart LR
+    A["📝 Request<br/>+ evidence"] --> B["RocketRide<br/>scope workflow"]
+    B --> C["Scope decision<br/>proof · contradiction · experiment"]
+    C --> D{"✋ Approve<br/>scope?"}
+    D -- yes --> E["Coding agent<br/>isolated worktree"]
+    E --> F["npm test<br/>npm run build"]
+    F --> G["RocketRide<br/>delivery review"]
+    G --> H["Pull request"]
+    H --> I{"✋ Human<br/>review"}
+
+    classDef gate fill:#dcefed,stroke:#096b6a,color:#17232c;
+    class D,I gate;
+```
+
+**You describe the change.** Name the user, the behavior that should change, and any constraints worth protecting. Attach a brief, spec, notes, or data if they change the scope.
+
+**Signal scopes it.** The request and files go to the RocketRide scope workflow. Three specialist roles work concurrently, a promise judge assesses what each one committed to, a synthesis step reconciles them, and a JSON contract step validates the result before it reaches the UI. Models are told not to invent facts and to state uncertainty when evidence is thin. Signal records the engine's flow events, so you see the steps that actually ran, with timings.
+
+**You review the decision.** You see the recommended bet, a confidence level, the signals behind it, the strongest counterargument, an open question to settle before building, and a reversible experiment. **Proof mode** lets you open the source passage behind every claim.
+
+**You approve, and it builds.** **Create build mission** turns the decision into acceptance checks and a build queue. If you've enabled execution, **Run implementation** hands the mission to Claude Code (or Codex CLI) in a fresh `signal/*` worktree, runs your tests and build, has RocketRide review the delivery, and opens a pull request.
+
+<div align="center">
+<img src="docs/assets/signal-report.png" alt="A Signal scope decision: recommended bet, evidence-backed signals, and proof mode with source-linked claims" width="1000" />
+<br />
+<sub>A scope decision from a seed scenario: the recommendation, evidence-backed signals, and Proof mode claims linked to sources.</sub>
+</div>
+
+## Features
+
+| | |
+| --- | --- |
+| 🧭 **Parallel specialist scoping** | Customer Advocate, Skeptic, and Product Strategist analyze the same evidence concurrently. |
+| 🔎 **Proof mode** | Each claim carries its source, role, and support/challenge status, and is checked against the source text (verbatim, paraphrase, or not found). Click one to read the original passage. |
+| ⚖️ **Built-in dissent** | Every report includes the strongest contradiction and caps confidence when skeptical evidence exists. |
+| 🧪 **Reversible next step** | Instead of a roadmap, you get the smallest experiment that would confirm or kill the idea. |
+| 📒 **Promise ledger** | Each specialist's commitments, and whether the returned evidence shows they were kept. |
+| 🕸️ **Semantic spacetime map** | Explicit `supports` and `challenges` links between evidence, roles, and the decision. |
+| ⏱️ **Engine trace and timeline** | The steps RocketRide actually executed, with per-step timings, recorded from the engine's flow events. |
+| 📎 **Rich evidence** | Attach TXT, Markdown, JSON, JSONL, CSV, or XLSX. Spreadsheets are parsed into rows the workflow can cite. |
+| 🏷️ **Honest provenance** | Seed, staged, imported, and live results are labeled differently. Signal never swaps in demo output when a live run fails. |
+| 🌿 **Isolated builds** | The coding agent works in a temporary Git worktree on its own branch, never your working copy. |
+| ✅ **Line-cited delivery review** | A second RocketRide workflow reviews the patch and test results, citing `path:line` locations that Signal verifies against the diff. |
+| 🔐 **Credentials stay put** | **Connections** checks Claude Code and Codex sign-in status. Tokens stay in each CLI's own store. |
+
+## Run it live with RocketRide
+
+A live run needs a **RocketRide engine** and an [OpenRouter](https://openrouter.ai) API key. The quickest path runs the engine locally with Docker:
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # 1. add ROCKETRIDE_OPENROUTER_KEY to .env
+npm run rocketride:up         # 2. start the RocketRide engine on 127.0.0.1:5565
+npm run rocketride:check      # 3. verify the engine and both pipelines
+npm run dev                   # 4. start Signal, then click "Run scope workflow"
 ```
+
+You can also point Signal at an existing RocketRide server or RocketRide Cloud instead of Docker.
+
+<details>
+<summary><b>Environment variables</b></summary>
 
 ```dotenv
 ROCKETRIDE_URI=ws://localhost:5565
-ROCKETRIDE_AUTH=your-engine-key
+ROCKETRIDE_AUTH=
 ROCKETRIDE_APIKEY=your-engine-key
-ROCKETRIDE_OPENAI_KEY=your-openai-key
+ROCKETRIDE_OPENROUTER_KEY=your-openrouter-key
 ```
 
-Make `ROCKETRIDE_OPENAI_KEY` available to the RocketRide engine process, then verify both pipelines and launch Signal:
+Both pipelines call models through OpenRouter's OpenAI-compatible endpoint, so `ROCKETRIDE_OPENROUTER_KEY` must be available to the **RocketRide engine process**. `npm run rocketride:up` passes it from `.env` into the container. `npm run rocketride:check` prints `RocketRide health: PASS` only when the connection, ping, and both pipeline validations succeed.
+
+</details>
+
+<details>
+<summary><b>Run the scope workflow from the command line</b></summary>
 
 ```bash
-npm run rocketride:check
-npm run dev
+npm run seed:scenario -- --list
+npm run seed:scenario -- --scenario browser-workflow-agent
+npm run analyze:live -- --input data/seed-evidence.txt --output data/live-report.json
 ```
 
-You can also run the scope workflow directly:
+Refresh Signal and click **Open latest live run**, or use **Open completed report** to import any report the runner produced.
 
-```bash
-npm run analyze:live -- \
-  --input data/sample-evidence.txt \
-  --output data/live-report.json
-```
+</details>
 
-Refresh the interface and choose **Load latest live run**. Signal never substitutes a seed report when a live run fails.
+### The two workflows
 
-## Use the product
+Both pipelines use the same shape: parse the input, fan out to three concurrent LLM roles, reconcile, then enforce a JSON contract with RocketRide's `extract_data` node, which retries malformed output. Signal records the engine's flow events for both, so the trace you see is the one that ran.
 
-1. Enter the product outcome you want to create.
-2. Optionally attach TXT, Markdown, JSON, or CSV evidence.
-3. Run the scope workflow.
-4. Inspect the recommendation, contradiction, proposed experiment, source-linked proof, promise assessments, and execution trace.
-5. Approve the decision as a build mission.
-6. If trusted repository execution is configured, dispatch the mission to the local coding runner.
-7. Review the resulting branch or GitHub pull request yourself.
-
-Browser uploads are staged without pretending they have been analyzed. A live result is shown only after the RocketRide runner returns a valid report.
-
-## The two RocketRide workflows
-
-### Scope decision
-
-[`pipelines/signal-room.pipe`](./pipelines/signal-room.pipe) fans the evidence out to three specialist roles:
+<table>
+<tr>
+<th width="50%"><a href="pipelines/signal-room.pipe"><code>signal-room.pipe</code></a>: scope decision</th>
+<th width="50%"><a href="pipelines/delivery-review.pipe"><code>delivery-review.pipe</code></a>: delivery review</th>
+</tr>
+<tr>
+<td>
 
 ```text
 evidence → parse
-             ├─ customer advocate ─┐
-             ├─ skeptic ───────────┼─ promise judge ─ synthesis
-             └─ product strategist ┘                      │
-                                                          ▼
-                                                contract enforcement
-                                                          │
-                                                          ▼
-                                                    decision JSON
+  ├─ Customer Advocate ─┐
+  ├─ Skeptic ───────────┼─ promise judge
+  └─ Product Strategist ┘       │
+                            synthesis
+                                │
+                          JSON contract
+                                │
+                         decision report
 ```
 
-Parsed evidence reaches each prompt node on its `text` lane, so every role model is called once, after its prompt is fully assembled. Signal records the engine's flow events during the run and shows them as the workflow trace and timeline.
-
-The resulting report contains a recommendation, confidence, sources, signals, proof claims, a contradiction, a reversible experiment, promise assessments, and a semantic relationship map.
-
-### Delivery review
-
-[`pipelines/delivery-review.pipe`](./pipelines/delivery-review.pipe) evaluates the implementation handoff separately:
+</td>
+<td>
 
 ```text
-mission + coding summary + diff stat + quality-gate output
-                     │
-                     ├─ change reviewer ───┐
-                     ├─ quality gatekeeper ┼─ reconciliation → review JSON
-                     └─ release skeptic ───┘
+mission + numbered patch + test output
+  ├─ Change Reviewer ─────┐
+  ├─ Quality Gatekeeper ──┼─ reconciliation
+  └─ Release Skeptic ─────┘       │
+                          JSON contract
+                                  │
+                           review report
 ```
 
-Its verdict describes readiness for **human pull-request review**. It never authorizes deployment or release.
+</td>
+</tr>
+<tr>
+<td>Recommendation, confidence, sources, signals, proof claims, contradiction, experiment, promise assessments, and relationship map.</td>
+<td>A verdict on readiness for <b>human pull-request review</b>, with findings that cite <code>path:line</code> locations Signal checks against the patch. It never approves a merge, release, or deployment.</td>
+</tr>
+</table>
 
-## Optional repository execution
+## Let it build (optional)
 
-Signal can hand an approved mission to a local coding agent, headless Claude Code by default or Codex CLI, but only when execution is explicitly enabled for one trusted repository:
+> [!WARNING]
+> Repository execution lets Signal run a coding agent and your project's npm scripts on this machine. Enable it only for a repository you trust, and keep the server on localhost.
+
+Add to `.env`:
 
 ```dotenv
 SIGNAL_EXECUTION_ENABLED=1
 SIGNAL_EXECUTION_REPO=/absolute/path/to/trusted/repository
+SIGNAL_EXECUTION_RUNNER=claude       # claude (default) or codex
 SIGNAL_EXECUTION_BASE=main
 SIGNAL_EXECUTION_REMOTE=origin
-SIGNAL_EXECUTION_RUNNER=claude   # or codex
+SIGNAL_EXECUTION_PR_MODE=github      # or local: push a review branch, no PR
 
-SIGNAL_DELIVERY_REVIEW_ENABLED=1
-SIGNAL_DELIVERY_REVIEW_REQUIRED=0
+SIGNAL_DELIVERY_REVIEW_ENABLED=1     # run the RocketRide delivery review
+SIGNAL_DELIVERY_REVIEW_REQUIRED=0    # set to 1 to block the PR if the review fails
 ```
 
-The runner:
+When you click **Run implementation**, the runner:
 
-1. Fetches the configured base branch.
-2. Creates an isolated `signal/*` worktree and branch.
-3. Dispatches the bounded mission to the configured coding agent. Claude Code runs with edits auto-accepted in the worktree and shell access limited to `npm test`, `npm run build`, and read-only git.
-4. Runs `npm test` and `npm run build` when those scripts exist.
-5. Captures the changed-file list, diff statistics, and quality-gate output.
-6. Optionally runs the RocketRide delivery review.
-7. Commits and pushes the branch.
-8. Uses authenticated GitHub CLI to open a pull request in GitHub mode.
+1. fetches the configured base branch and creates a temporary worktree on a new `signal/<run-id>` branch,
+2. runs the coding agent with the approved mission:
+   - **Claude Code** (default) runs headless with edits auto-accepted inside the worktree and shell access limited to `npm test`, `npm run build`, and read-only git,
+   - **Codex CLI** runs with workspace-write access to the worktree,
+3. runs `npm test` and `npm run build` if the repository defines them,
+4. records the changed files, the actual patch, and the command output,
+5. optionally sends that bundle to the RocketRide delivery review,
+6. commits and pushes the branch, then opens a pull request with **GitHub CLI** with the review in the PR body (in `local` mode it stops at the pushed review branch),
+7. removes the temporary worktree.
 
-You need a locally authenticated `claude` (or `codex`) CLI and `gh` CLI for the complete GitHub path. The **Connections** dialog reports local runner availability without moving credentials into Signal.
+You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mode. Follow progress under **Builds**. Each run is saved under `data/runs/`, and a run interrupted by a server restart is marked as failed rather than left hanging.
+
+> [!TIP]
+> To try the full build loop without touching a real repository, run `npm run demo:target`. It creates a small demo app with a local bare Git remote under `.context/` and prints the `SIGNAL_EXECUTION_*` values to use. Set `SIGNAL_EXECUTION_PR_MODE=local`, since a local remote can't host a pull request.
 
 ## Architecture
 
 ```text
-Browser UI
-  ├─ seed scenarios and report views
-  ├─ evidence staging
-  └─ mission approval
-          │ local HTTP
-          ▼
-Node development server
-  ├─ request and evidence handoff
-  ├─ RocketRide process adapter
-  └─ optional repository executor
-          │
-          ├─ RocketRide Server → structured scope/delivery reports
-          └─ Claude Code/Codex + Git + GitHub CLI → reviewable code change
+Browser UI (index.html, src/)              Node server (scripts/serve.mjs, 127.0.0.1 only)
+ ├─ work order + staged evidence    ──►     ├─ POST /api/analyze          → evidence ingestion → rocketride-run.mjs → RocketRide
+ ├─ decision · proof · ledger · map         ├─ POST /api/execute          → signal-execute.mjs → Claude Code / Codex · git · gh
+ ├─ engine trace + timeline                 ├─ GET  /api/runs/:id         → saved run records (data/runs/)
+ └─ build mission + build status    ◄──     ├─ GET  /api/executions/:id   → live build progress
+                                            ├─ GET  /api/execution-status
+                                            ├─ GET  /api/runners
+                                            └─ POST /api/runners/:runner/login
 ```
 
-Important directories:
-
-| Path | Purpose |
+| Path | What's inside |
 | --- | --- |
-| `src/` | Browser application, report contracts, evidence utilities, and seed scenarios |
-| `scripts/` | Local server, RocketRide runners, evaluations, demo tooling, and repository execution |
-| `pipelines/` | RocketRide scope and delivery-review workflow definitions |
-| `data/scenarios/` | Deterministic seed inputs used for honest product demonstrations |
-| `data/source-packs/` | Rich example evidence bundles |
-| `tests/` | Contract and behavior tests |
+| [`src/`](src) | Browser app, report contract and validation, evidence utilities, seed scenarios |
+| [`scripts/`](scripts) | Local server, RocketRide runners and health check, repository executor, eval, demo tooling |
+| [`pipelines/`](pipelines) | RocketRide scope and delivery-review pipeline definitions |
+| [`data/scenarios/`](data/scenarios) | Deterministic seed inputs for honest demos |
+| [`demo/target-template/`](demo/target-template) | Small app that `npm run demo:target` turns into a safe build target |
+| [`docker-compose.rocketride.yml`](docker-compose.rocketride.yml) | Local RocketRide engine used by `npm run rocketride:up` |
+| [`tests/`](tests) | Report contract and behavior tests (`node --test`) |
 
-## Promise Theory and Semantic Spacetime
+Plain JavaScript, HTML, and CSS, with no frontend framework. There are two runtime dependencies: the [`rocketride`](https://www.npmjs.com/package/rocketride) SDK and [`read-excel-file`](https://www.npmjs.com/package/read-excel-file) for XLSX evidence.
 
-Signal uses **Promise Theory** as an operational design constraint. Each specialist promises a bounded behavior—such as citing evidence, surfacing rival explanations, or proposing a reversible experiment—and the returned promise ledger makes those commitments reviewable.
+## Why Signal?
 
-**Semantic Spacetime** is represented as an explicit support/challenge topology between evidence, specialist findings, and decisions. The visualization explains declared adjacency; it does not claim that visual proximity proves causality.
+| | Prompt-to-code agent | Chat assistant | **Signal** |
+| --- | :---: | :---: | :---: |
+| Decides *whether* to build before building | — | Sometimes | ✅ |
+| Claims linked to source evidence | — | Rarely | ✅ |
+| Counterargument always surfaced | — | — | ✅ |
+| Human approval before code runs | Varies | n/a | ✅ |
+| Isolated branch + tests + build | Varies | — | ✅ |
+| Independent review of the delivery | — | — | ✅ |
 
-This is an applied product interpretation of Mark Burgess and Jan Bergstra's work. See [Promise Theory](https://markburgess.org/promises.html) and [Promise Theory: Principles and Applications](https://markburgess.org/BookOfPromises.pdf).
+### Grounded in Promise Theory
+
+Signal treats each specialist as an agent that can only promise its own behavior, such as *cite evidence*, *surface a rival explanation*, or *propose a reversible experiment*. The **promise ledger** checks those promises against the returned evidence and trace, so a prompt is never treated as a guarantee. The **semantic spacetime** map shows declared `supports` and `challenges` relationships, not similarity scores. Both are practical applications of Mark Burgess and Jan Bergstra's [Promise Theory](https://markburgess.org/promises.html) ([book, PDF](https://markburgess.org/BookOfPromises.pdf)), not new formal results.
 
 ## Commands
 
-| Command | Purpose |
+| Command | What it does |
 | --- | --- |
-| `npm run dev` | Start Signal on port 4173 |
-| `npm test` | Run the Node test suite |
-| `npm run eval` | Check evidence, proof, and confidence invariants |
-| `npm run build` | Build the static application into `dist/` |
-| `npm run rocketride:check` | Verify engine connectivity and both pipelines |
-| `npm run analyze:live` | Produce a live scope report from an evidence bundle |
-| `npm run delivery-review:live` | Review a prepared implementation-delivery bundle |
-| `npm run seed:scenario -- --list` | List deterministic demo scenarios |
-| `npm run sources:demo` | Generate the rich security-center source pack |
-| `npm run demo:record` | Render the end-to-end product walkthrough |
+| `npm run dev` | Start Signal at `http://127.0.0.1:4173` (`PORT` overrides) |
+| `npm test` | Run the test suite |
+| `npm run eval` | Check the evidence, proof, and confidence invariants |
+| `npm run build` | Build the static app into `dist/` |
+| `npm run rocketride:up` | Start a local RocketRide engine with Docker (`:down` stops it, `:logs` follows it) |
+| `npm run rocketride:check` | Verify engine connectivity and validate both pipelines |
+| `npm run analyze:live` | Run the scope workflow on an evidence file |
+| `npm run delivery-review:live` | Run the delivery review on a delivery bundle |
+| `npm run seed:scenario -- --list` | List the deterministic demo scenarios |
+| `npm run sources:demo` | Generate a realistic multi-format source pack |
+| `npm run demo:target` | Create an isolated demo repository and local remote for trying builds |
+| `npm run demo:record` | Record an end-to-end walkthrough video (macOS + Chrome) |
 
-## Verification
+### Trust checks
 
 ```bash
-npm test
-npm run eval
-npm run build
+npm test && npm run eval && npm run build
 ```
 
-The evaluation checks the project's core trust contract: proof claims must reference real sources, available quotes must occur in their source text, visible signals must retain source labels, and skeptical evidence must prevent absolute confidence.
+`npm run eval` fails if a proof claim references a source that doesn't exist, quotes text that isn't in its source, shows a signal without a source label, or reports absolute confidence despite skeptical evidence.
+
+## FAQ
+
+<details>
+<summary><b>Do I need an API key to try it?</b></summary>
+
+No. `npm install && npm run dev` gives you the full interface with deterministic seed scenarios. You need a RocketRide engine and an OpenRouter key only to scope new requests live.
+
+</details>
+
+<details>
+<summary><b>Is RocketRide an agent?</b></summary>
+
+No. RocketRide is a pipeline runtime. Signal uses it to run two explicit, inspectable workflows with fixed roles and a validated output contract, not an open-ended autonomous loop.
+
+</details>
+
+<details>
+<summary><b>Which coding agent does it use?</b></summary>
+
+**Claude Code** by default, running headless. Set `SIGNAL_EXECUTION_RUNNER=codex` to use **Codex CLI** instead. **Connections** shows whether each CLI is signed in.
+
+</details>
+
+<details>
+<summary><b>Can Signal merge or deploy code?</b></summary>
+
+No. The furthest it goes is opening a pull request. A `ready` delivery-review verdict means *ready for human review*, nothing more.
+
+</details>
+
+<details>
+<summary><b>How do I know a report was really generated live?</b></summary>
+
+Reports produced by the included runner are labeled live. Seed scenarios, staged files, and imported files are labeled as such. The UI validates an imported report's shape but tells you it can't prove where an arbitrary JSON file came from.
+
+</details>
+
+<details>
+<summary><b>What file types can I attach?</b></summary>
+
+TXT, Markdown, JSON, JSONL, CSV, and XLSX. Each spreadsheet sheet is converted to rows the workflow can read and cite. PDF extraction and image OCR aren't implemented yet.
+
+</details>
 
 ## Safety and current limits
 
-- Keep the development server on localhost. Do not expose it to an untrusted network, especially when repository execution is enabled.
-- Repository execution is off by default and is intended only for a repository you explicitly trust.
-- Signal runs the target repository's npm test/build scripts only when they are configured; their presence does not replace human code review.
-- A delivery-review verdict informs pull-request review. It is not a release or deployment approval.
-- Imported JSON can declare itself live. The UI validates its shape but cannot independently prove external provenance.
-- Spreadsheet parsing, PDF extraction, and image OCR are not implemented. Supported browser inputs are TXT, Markdown, JSON, and CSV.
-- Live run artifacts such as `data/live-report.json` are local and gitignored.
-- The RocketRide engine is not built into the Node application; point Signal at a compatible local or Cloud RocketRide Server.
+- **Localhost only.** The server binds to `127.0.0.1`. Don't expose it to an untrusted network, especially with execution enabled.
+- **One trusted repository.** Execution is off by default and scoped to the single repository you configure. Passing tests don't replace code review.
+- **Advisory review.** The delivery review informs the human reviewer. It never approves a release.
+- **Local artifacts.** Live outputs such as `data/live-report.json`, run records in `data/runs/`, and rendered recordings are gitignored.
+- **Engine runs separately.** Start it with Docker (`npm run rocketride:up`) or point Signal at your own RocketRide server or Cloud endpoint.
 
-## Demo assets
+## Contributing
 
-Generate a realistic source pack:
+Before opening a pull request, run:
 
 ```bash
-npm run sources:demo
+npm test && npm run eval && npm run build
 ```
 
-Render the current end-to-end walkthrough:
+Keep the honesty rules intact: never present seed, staged, or imported data as a live result, and keep every consequential step behind a human decision.
 
-```bash
-npm run demo:record
-open data/recordings/signal-flow/signal-flow.mp4
-```
+## Acknowledgements
 
-Generated recordings are local artifacts and are not committed to the repository.
+- [RocketRide](https://github.com/rocketride-org) for the pipeline runtime behind both workflows.
+- Mark Burgess and Jan Bergstra for [Promise Theory](https://markburgess.org/promises.html) and Semantic Spacetime.
+- [Claude Code](https://claude.com/claude-code), [Codex CLI](https://github.com/openai/codex), and [GitHub CLI](https://cli.github.com) for the build-and-review path.
+- [OpenRouter](https://openrouter.ai) for model access inside the pipelines.
+
+## License
+
+No license has been added to this repository yet.
