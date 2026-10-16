@@ -6,7 +6,7 @@ import { attachEvidenceContent, parseEvidenceBundle } from '../src/evidence.js';
 import { verifyReportProofs } from '../src/proof-verification.js';
 import { normalizeReport, unwrapRocketRideResponse, validateReport } from '../src/report.js';
 import { scenarioLibrary } from '../src/scenarios.js';
-import { ingestEvidenceFiles } from '../scripts/evidence-ingestion.mjs';
+import { acceptUploads } from '../scripts/evidence-ingestion.mjs';
 
 test('the bundled demo is a valid, explicitly non-live report', () => {
   assert.deepEqual(validateReport(demoReport), { ok: true, errors: [] });
@@ -84,7 +84,14 @@ test('delivery review is a separate RocketRide workflow with bounded reviewer ro
   assert.ok(names.includes('Quality gatekeeper'));
   assert.ok(names.includes('Release skeptic'));
   assert.ok(providers.includes('extract_data'));
-  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 5);
+  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 6);
+  // The diff is read by an agent through git tools that cannot write.
+  const agent = pipeline.components.find(component => component.provider === 'agent_rocketride');
+  const git = pipeline.components.find(component => component.provider === 'tool_git');
+  assert.ok(agent?.config.require_tool_call);
+  assert.equal(git.config.readOnlyMode, true);
+  assert.deepEqual(git.control, [{ classType: 'tool', from: agent.id }]);
+  assert.ok(pipeline.components.some(component => component.provider === 'memory_internal' && component.control?.[0]?.from === agent.id));
   assert.match(raw, /never automatic release/i);
   assert.match(raw, /https:\/\/openrouter\.ai\/api\/v1/);
   assert.match(raw, /\$\{ROCKETRIDE_OPENROUTER_KEY\}/);
@@ -93,11 +100,15 @@ test('delivery review is a separate RocketRide workflow with bounded reviewer ro
 
 test('execution ships a real tested patch instead of a simulated delivery summary', async () => {
   const execution = await readFile(new URL('../scripts/signal-execute.mjs', import.meta.url), 'utf8');
-  assert.match(execution, /const actualDiff = run\('git', \['diff'/);
-  assert.match(execution, /actualDiff: actualDiff\.slice/);
+  assert.match(execution, /commitRange: \{ base: baseCommit, head \}/);
+  assert.match(execution, /repoPath: worktree/);
+  // The reviewed commit reaches the remote only after the delivery review.
+  const review = execution.indexOf('scripts/rocketride-delivery-review.mjs');
+  assert.ok(review > 0 && review < execution.indexOf("run('git', ['push'"));
   assert.match(execution, /qualityGates\.push\(\{ name: 'npm test', status: 'passed', output:/);
   assert.match(execution, /qualityGates\.push\(\{ name: 'npm run build', status: 'passed', output:/);
   assert.match(execution, /run\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
+  assert.match(execution, /'--permission-mode', 'acceptEdits'/);
   assert.match(execution, /SIGNAL_EXECUTION_PR_MODE/);
   assert.doesNotMatch(execution, /'-a', 'never'/);
 });
@@ -156,18 +167,14 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
 });
 
-test('binary XLSX evidence is parsed into source text with provenance', async () => {
+test('binary XLSX uploads are fingerprinted and passed to RocketRide unparsed', async () => {
   const bytes = await readFile(new URL('../data/source-packs/security-center-q4/05-enterprise-pipeline.xlsx', import.meta.url));
-  const sources = await ingestEvidenceFiles([{
-    name: 'enterprise-pipeline.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dataBase64: bytes.toString('base64')
-  }]);
-  assert.equal(sources.length, 1);
-  assert.equal(sources[0].kind, 'SHEET');
-  assert.match(sources[0].content, /SHEET: Enterprise Pipeline/);
-  assert.match(sources[0].content, /Finlytics/);
-  assert.match(sources[0].sha256, /^[a-f0-9]{64}$/);
+  const [upload] = acceptUploads([{ name: 'enterprise-pipeline.xlsx', dataBase64: bytes.toString('base64') }]);
+  assert.equal(upload.kind, 'SHEET');
+  assert.equal(upload.mimeType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.ok(upload.buffer.equals(bytes));
+  assert.match(upload.sha256, /^[a-f0-9]{64}$/);
+  assert.throws(() => acceptUploads([{ name: 'notes.exe', dataBase64: 'AA==' }]), /not supported/);
 });
 
 test('proof verification distinguishes exact quotes from unsupported text', () => {

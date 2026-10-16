@@ -140,10 +140,15 @@ Work carefully in the current repository. First inspect its conventions and exis
 
   const changed = run('git', ['status', '--short'], { cwd: worktree });
   if (!changed) throw new Error('The coding agent completed without changing tracked files. No pull request was created.');
-  run('git', ['add', '-N', '.'], { cwd: worktree });
-  const actualDiff = run('git', ['diff', '--no-ext-diff', '--unified=40'], { cwd: worktree });
-
   const agentSummary = await readFile(summaryPath, 'utf8').catch(() => 'No agent summary was written.');
+  // Commit locally first so the review reads one immutable commit; nothing
+  // reaches the remote until that review has run.
+  emit('testing', 'Committing the tested change locally for review');
+  run('git', ['add', '-A'], { cwd: worktree });
+  run('git', ['commit', '-m', `feat: ${title}`], { cwd: worktree, maxBuffer: 10_000_000 });
+  const head = run('git', ['rev-parse', 'HEAD'], { cwd: worktree });
+  const baseCommit = run('git', ['rev-parse', 'HEAD~1'], { cwd: worktree });
+
   if (deliveryReviewEnabled) {
     const deliveryInputPath = join(artifactsDir, 'delivery-input.json');
     const deliveryOutputPath = join(artifactsDir, 'delivery-review.json');
@@ -152,16 +157,16 @@ Work carefully in the current repository. First inspect its conventions and exis
       mission: { title, brief },
       repository: basename(repo),
       branch,
+      repoPath: worktree,
+      commitRange: { base: baseCommit, head },
       codingAgentSummary: agentSummary,
-      changedFiles: changed,
-      diffStat: run('git', ['diff', '--stat'], { cwd: worktree }),
-      actualDiff: actualDiff.slice(0, 300_000),
+      changedFiles: run('git', ['diff', '--name-status', baseCommit, head], { cwd: worktree }),
       qualityGates,
       constraints: 'This is a delivery assessment for human pull-request review. It must never automatically approve a release.'
     };
     await writeFile(deliveryInputPath, `${JSON.stringify(deliveryBundle, null, 2)}\n`, 'utf8');
     try {
-      emit('delivery-review', `RocketRide is assessing the tested delivery before ${prMode === 'local' ? 'the review branch is pushed' : 'pull-request creation'}`);
+      emit('delivery-review', `RocketRide's diff reader agent is reading commit ${head.slice(0, 7)} with read-only git tools`);
       run(process.execPath, [
         join(signalRoot, 'scripts/rocketride-delivery-review.mjs'),
         '--input', deliveryInputPath,
@@ -173,13 +178,11 @@ Work carefully in the current repository. First inspect its conventions and exis
       const lines = error instanceof Error ? error.message.split('\n').map(line => line.trim()).filter(Boolean) : [String(error)];
       const detail = lines.findLast(line => /error/i.test(line) && !line.startsWith('at ')) || lines.at(-1);
       emit('delivery-review-failed', `RocketRide did not produce a delivery review: ${detail}`);
-      if (deliveryReviewRequired) throw new Error('A required RocketRide delivery review failed. No pull request was created.');
+      if (deliveryReviewRequired) throw new Error(`A required RocketRide delivery review failed. Nothing was pushed. ${detail}`);
     }
   }
 
-  emit('review-ready', 'Committing the tested change');
-  run('git', ['add', '-A'], { cwd: worktree });
-  run('git', ['commit', '-m', `feat: ${title}`], { cwd: worktree, maxBuffer: 10_000_000 });
+  emit('review-ready', `Pushing reviewed commit ${head.slice(0, 7)}`);
   run('git', ['push', '-u', remote, branch], { cwd: worktree, maxBuffer: 10_000_000 });
   pushed = true;
 

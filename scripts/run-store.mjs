@@ -79,3 +79,37 @@ export async function failInterruptedRuns() {
   }
   return count;
 }
+
+// Completed live scope runs, newest first, one per distinct request.
+export async function listScopeDecisions(limit = 6) {
+  let names;
+  try { names = await readdir(storeDir); } catch { return []; }
+  const runs = [];
+  for (const name of names.filter(entry => entry.endsWith('.json'))) {
+    try {
+      const run = JSON.parse(await readFile(join(storeDir, name), 'utf8'));
+      if (run.kind === 'scope' && run.status === 'complete' && run.report?.mode === 'live') runs.push(run);
+    } catch { /* Skip unreadable records. */ }
+  }
+  const seen = new Set();
+  return runs
+    .sort((a, b) => String(b.completedAt || b.createdAt).localeCompare(String(a.completedAt || a.createdAt)))
+    .filter(run => {
+      const key = String(run.brief || '').trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit)
+    .map(run => ({
+      id: run.id,
+      completedAt: run.completedAt,
+      brief: run.brief,
+      sources: (run.evidence || []).map(item => item.name),
+      reportId: run.report.reportId,
+      recommendation: { title: run.report.recommendation?.title, summary: run.report.recommendation?.summary, confidence: run.report.recommendation?.confidence },
+      contradiction: { title: run.report.contradiction?.title },
+      experiment: { title: run.report.experiment?.title, window: run.report.experiment?.window, metric: run.report.experiment?.metric },
+      engineDurationMs: run.report.provenance?.engineDurationMs || 0
+    }));
+}

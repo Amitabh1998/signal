@@ -21,7 +21,7 @@ async function loadDotEnv(filepath) {
 await loadDotEnv(resolve('.env'));
 const uri = process.env.ROCKETRIDE_URI || 'ws://localhost:5565';
 const auth = process.env.ROCKETRIDE_AUTH || process.env.ROCKETRIDE_APIKEY || '';
-const pipelinePaths = [resolve('pipelines/signal-room.pipe'), resolve('pipelines/delivery-review.pipe')];
+const pipelinePaths = [resolve('pipelines/evidence-parse.pipe'), resolve('pipelines/signal-room.pipe'), resolve('pipelines/delivery-review.pipe')];
 const healthPath = resolve('data/rocketride-health.json');
 const pipelines = await Promise.all(pipelinePaths.map(async filepath => ({ filepath, pipeline: JSON.parse(await readFile(filepath, 'utf8')) })));
 const client = new RocketRideClient({
@@ -73,7 +73,7 @@ try {
   await writeFile(healthPath, `${JSON.stringify(health, null, 2)}\n`, 'utf8');
   console.log('RocketRide health: PASS');
   console.log(`Engine: reachable and authenticated at ${uri} (${latencyMs} ms)`);
-  console.log(`Pipelines: both valid (${warnings} warning(s))`);
+  console.log(`Pipelines: all valid (${warnings} warning(s))`);
   console.log(`Last report: ${lastReport.valid ? 'valid' : 'not available or invalid'}`);
 } catch (error) {
   const health = {

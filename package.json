@@ -21,7 +21,6 @@
     "rocketride:check": "node scripts/rocketride-check.mjs"
   },
   "dependencies": {
-    "read-excel-file": "^9.3.12",
     "rocketride": "1.4.0"
   },
   "engines": {

@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
-import { buildEvidenceBundle, ingestEvidenceFiles } from './evidence-ingestion.mjs';
-import { createRun, failInterruptedRuns, readRun, updateRun } from './run-store.mjs';
+import { acceptUploads } from './evidence-ingestion.mjs';
+import { createRun, failInterruptedRuns, listScopeDecisions, readRun, updateRun } from './run-store.mjs';
 import { verifyReportProofs } from '../src/proof-verification.js';
 
 const root = new URL('../', import.meta.url).pathname;
@@ -14,6 +14,7 @@ const maxBodyBytes = 12_000_000;
 const executions = new Map();
 const executionWrites = new Map();
 let scopeWorkflowRunning = false;
+let scopeProgress = { status: 'idle', steps: [] };
 
 function persistExecution(execution) {
   const previous = executionWrites.get(execution.id) || Promise.resolve();
@@ -152,48 +153,66 @@ async function runAnalyzeApi(request, response) {
   }
 
   scopeWorkflowRunning = true;
+  scopeProgress = { status: 'running', startedAt: Date.now(), steps: [] };
   let runRecord;
   let runDir;
   try {
     const raw = await readBody(request);
     const parsed = raw.trim() ? JSON.parse(raw) : {};
-    const uploadedSources = await ingestEvidenceFiles(Array.isArray(parsed.files) ? parsed.files : []);
-    const fallbackEvidence = uploadedSources.length || String(parsed.evidence || '').trim()
-      ? String(parsed.evidence || '').trim()
-      : await readFile(join(root, 'data/sample-evidence.txt'), 'utf8');
-    const evidence = buildEvidenceBundle({
-      brief: String(parsed.brief || ''),
-      evidence: fallbackEvidence,
-      sources: uploadedSources
-    });
+    const brief = String(parsed.brief || '').trim();
+    let uploads = acceptUploads(Array.isArray(parsed.files) ? parsed.files : []);
+    // Without attachments, pasted evidence (or the bundled sample) is one text file.
+    if (!uploads.length) {
+      const text = String(parsed.evidence || '').trim() || await readFile(join(root, 'data/sample-evidence.txt'), 'utf8');
+      uploads = acceptUploads([{ name: parsed.evidence ? 'pasted-evidence.txt' : 'sample-evidence.txt', dataBase64: Buffer.from(text).toString('base64') }]);
+    }
     runRecord = await createRun({
       kind: 'scope',
       status: 'running',
-      brief: String(parsed.brief || '').trim(),
-      evidence: uploadedSources.map(({ id, name, kind, mimeType, size, sha256 }) => ({ id, name, kind, mimeType, size, sha256 })),
-      parsedEvidence: uploadedSources.map(({ id, name, kind, content }) => ({ id, name, kind, content })),
+      brief,
+      evidence: uploads.map(({ id, name, kind, mimeType, size, sha256 }) => ({ id, name, kind, mimeType, size, sha256 })),
       provenance: { mode: 'live', runner: 'rocketride' }
     });
     runDir = await mkdtemp(join(tmpdir(), 'signal-room-'));
-    const inputPath = join(runDir, 'evidence.txt');
+    const manifestPath = join(runDir, 'files.json');
+    const briefPath = join(runDir, 'brief.txt');
     const outputPath = join(runDir, 'live-report.json');
-    await writeFile(inputPath, `${evidence}\n`, 'utf8');
+    const manifest = [];
+    for (const [index, upload] of uploads.entries()) {
+      const path = join(runDir, `${index + 1}-${upload.name}`);
+      await writeFile(path, upload.buffer);
+      manifest.push({ name: upload.name, path, mimeType: upload.mimeType, kind: upload.kind, size: upload.size, sha256: upload.sha256 });
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await writeFile(briefPath, brief, 'utf8');
 
     const child = spawn(process.execPath, [
       join(root, 'scripts/rocketride-run.mjs'),
-      '--input',
-      inputPath,
-      '--output',
-      outputPath
+      '--files', manifestPath,
+      '--brief', briefPath,
+      '--output', outputPath
     ], { cwd: root, env: process.env });
 
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', data => { stdout += data; });
+    let progressBuffer = '';
+    child.stdout.on('data', data => {
+      stdout += data;
+      progressBuffer += data;
+      const lines = progressBuffer.split('\n');
+      progressBuffer = lines.pop() || '';
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line);
+          if (event.type === 'signal-flow') scopeProgress.steps.push({ step: event.step, startedMs: event.at - scopeProgress.startedAt });
+        } catch { /* Plain log line. */ }
+      }
+    });
     child.stderr.on('data', data => { stderr += data; });
 
     const code = await new Promise(resolve => child.on('close', resolve));
     if (code !== 0) {
+      scopeProgress.status = 'failed';
       await updateRun(runRecord.id, { status: 'failed', error: stderr.trim() || stdout.trim() || 'RocketRide did not produce a report.' });
       sendJson(response, 502, {
         ok: false,
@@ -210,10 +229,12 @@ async function runAnalyzeApi(request, response) {
     await updateRun(runRecord.id, {
       status: 'complete',
       completedAt: new Date().toISOString(),
+      parsedEvidence: report.parsedEvidence || [],
       report,
       provenance: report.provenance
     });
     await writeFile(join(root, 'data/live-report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    scopeProgress.status = 'complete';
     sendJson(response, 200, { ok: true, runId: runRecord.id, stdout: stdout.trim(), report });
   } catch (error) {
     if (runRecord) await updateRun(runRecord.id, { status: 'failed', error: error instanceof Error ? error.message : String(error) }).catch(() => {});
@@ -223,6 +244,7 @@ async function runAnalyzeApi(request, response) {
       message: error instanceof Error ? error.message : String(error)
     });
   } finally {
+    if (scopeProgress.status === 'running') scopeProgress.status = 'failed';
     if (runDir) await rm(runDir, { recursive: true, force: true });
     scopeWorkflowRunning = false;
   }
@@ -304,6 +326,14 @@ const server = createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, error?.code === 'ENOENT' ? 404 : 400, { ok: false, message: 'Run not found.' });
     }
+    return;
+  }
+  if (request.method === 'GET' && pathname === '/api/decisions') {
+    sendJson(response, 200, { ok: true, decisions: await listScopeDecisions() });
+    return;
+  }
+  if (request.method === 'GET' && pathname === '/api/scope-progress') {
+    sendJson(response, 200, scopeProgress);
     return;
   }
   if (request.method === 'GET' && pathname === '/api/execution-status') {

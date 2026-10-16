@@ -1,6 +1,7 @@
 import { normalizeReport } from './report.js';
 import { scenarioLibrary, getScenario } from './scenarios.js';
 import { verifyReportProofs } from './proof-verification.js';
+import { roleFor } from './promise-judge.js';
 
 const $ = selector => document.querySelector(selector);
 let selectedScenario = scenarioLibrary[0];
@@ -256,12 +257,23 @@ function renderDeliveryReview(review) {
     ...(review.risks || []).map(risk => ({ ...risk, status: risk.severity, statusLabel: `${risk.severity} risk` }))
   ];
   const steps = review.provenance?.trace || [];
+  const agent = review.agent;
+  const diffCall = agent?.calls?.find(call => call.tool === 'diff');
+  const agentBox = agent && diffCall ? `
+    <div class="agent-call">
+      <span>agent_rocketride → read-only tool_git</span>
+      <code>git.diff(${escapeHtml(String(diffCall.refA || '').slice(0, 7))}..${escapeHtml(String(diffCall.refB || '').slice(0, 7))})</code>
+      <small>commit ${escapeHtml(agent.commit.short)}${agent.commit.subject ? ` · "${escapeHtml(agent.commit.subject)}"` : ''}</small>
+      <b>→ files changed: ${escapeHtml(diffCall.filesChanged)} · +${escapeHtml(diffCall.insertions)} · −${escapeHtml(diffCall.deletions)}</b>
+      <em class="${agent.matchesCommit ? 'verified' : 'unverified'}">${agent.matchesCommit ? 'Matches the commit Signal recorded' : `Does not match the recorded commit (${escapeHtml(agent.commitStats.filesChanged)} files · +${escapeHtml(agent.commitStats.insertions)} · −${escapeHtml(agent.commitStats.deletions)})`}</em>
+    </div>` : '';
   panel.innerHTML = `
     <div class="delivery-review-head">
       <div>
         <span class="eyebrow">delivery-review.pipe · live run</span>
-        <h3>RocketRide read the actual diff</h3>
+        <h3>An agent read the real diff</h3>
         <p>${escapeHtml(review.summary || '')}</p>
+        ${agentBox}
       </div>
       <div class="delivery-verdict ${escapeHtml(review.verdict)}">
         <span>Verdict</span>
@@ -545,12 +557,18 @@ function renderPipeline(pipeline, state = 'done') {
   `).join('');
 }
 
-function renderPromises(promises) {
+const promiseGraderCopy = {
+  applied: 'Graded by the independent Promise Judge (GPT-4o). Signal read these verdicts from the judge\'s own RocketRide output, not from the synthesizer.',
+  unavailable: 'The Promise Judge output could not be read for this run, so these grades are the synthesizer\'s restatement.',
+  'not-recorded': 'This report predates judge capture; these grades are the synthesizer\'s restatement.'
+};
+
+function renderPromises(promises, judge = {}) {
   $('#promiseLedger').innerHTML = promises.map(promise => `
     <article class="promise-row assessed">
       <div class="promise-agent"><i>${escapeHtml(promise.initials)}</i><div><strong>${escapeHtml(promise.agent)}</strong><span>promiser</span></div></div>
       <span class="promise-arrow">→</span>
-      <div class="promise-body"><strong>${escapeHtml(promise.body)}</strong><small>to ${escapeHtml(promise.to)} · ${escapeHtml(promise.evidence)}</small></div>
+      <div class="promise-body"><strong>${escapeHtml(promise.body)}</strong><small>to ${escapeHtml(promise.to)} · ${escapeHtml(promise.evidence)}</small>${promise.reason ? `<small class="promise-reason">Judge: ${escapeHtml(promise.reason)}</small>` : ''}</div>
       <span class="assessment ${escapeHtml(promise.assessment)}">${escapeHtml(promise.assessment)}</span>
     </article>
   `).join('') || '<div class="promise-row"><div class="promise-body"><strong>No promise ledger was included in this report.</strong></div></div>';
@@ -558,6 +576,8 @@ function renderPromises(promises) {
   $('#promiseKept').textContent = kept;
   $('.promise-score span').textContent = `/ ${promises.length} kept`;
   $('.view-tabs [data-view="promiseView"] span').textContent = String(promises.length).padStart(2, '0');
+  const disagreements = (judge.disagreements || []).map(item => `${item.agent}: synthesizer said ${item.synthesizer}, judge said ${item.judge}`);
+  $('#promiseGrader').textContent = [promiseGraderCopy[judge.status] || promiseGraderCopy['not-recorded'], disagreements.length ? `Overruled synthesizer: ${disagreements.join('; ')}.` : ''].filter(Boolean).join(' ');
 }
 
 function findProofSource(proof) {
@@ -566,12 +586,23 @@ function findProofSource(proof) {
     || currentReport.sources.find(source => source.name.toLowerCase().includes(String(proof.sourceName || '').toLowerCase()));
 }
 
+// Only a quote found in the parsed source (or a labelled, grounded paraphrase)
+// may carry the role's supported/challenged status; anything else is flagged.
+const proofVerificationCopy = {
+  'not-found': 'quote not found in the parsed source',
+  'source-unavailable': 'source text unavailable'
+};
+
+function quoteVerified(proof) {
+  return ['verbatim', 'paraphrase'].includes(proof?.verification?.status);
+}
+
 function renderProofs(proofs = []) {
   $('#proofCount').textContent = `${String(proofs.length).padStart(2, '0')} claims`;
   $('#proofList').innerHTML = proofs.length
     ? proofs.map((proof, index) => `
-      <button class="proof-item ${escapeHtml(proof.status)}" type="button" data-proof-index="${index}">
-        <span>${escapeHtml(proof.status)} · ${escapeHtml(proof.verification?.status || 'unchecked')}</span>
+      <button class="proof-item ${quoteVerified(proof) ? escapeHtml(proof.status) : 'unverified'}" type="button" data-proof-index="${index}">
+        <span>${quoteVerified(proof) ? `${escapeHtml(proof.status)} · ${escapeHtml(proof.verification.status)}` : `unverified · ${escapeHtml(proofVerificationCopy[proof.verification?.status] || 'quote not checked')}`}</span>
         <strong>${escapeHtml(proof.claim)}</strong>
         <small>${escapeHtml(proof.agent)} · ${escapeHtml(proof.sourceName || proof.sourceId || 'source')}</small>
         <q>${escapeHtml(proof.quote)}</q>
@@ -639,51 +670,34 @@ function renderEngineTrace(report) {
   $('#engineTimeline').hidden = false;
 }
 
-function parseCsvRows(text) {
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"' && text[index + 1] === '"') { cell += '"'; index += 1; }
-      else if (char === '"') quoted = false;
-      else cell += char;
-    } else if (char === '"') quoted = true;
-    else if (char === ',') { row.push(cell); cell = ''; }
-    else if (char === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else if (char !== '\r') cell += char;
-  }
-  row.push(cell);
-  rows.push(row);
-  return rows.filter(cells => cells.some(value => value.trim()));
+function parseMarkdownTable(markdown) {
+  return String(markdown).split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('|') && !/^\|[\s:|-]+\|$/.test(line))
+    .map(line => line.replace(/^\||\|$/g, '').split('|').map(cell => cell.trim()));
 }
 
-// Spreadsheets are read into rows by Signal's evidence ingestion before the
-// run; this shows exactly the rows RocketRide's roles received.
+// Tables come from RocketRide's parse node (its `table` lane), recorded when
+// the run parsed each uploaded file from its raw bytes.
 function renderParsedSheets(report) {
-  const sheets = (report.sources || []).flatMap(source => String(source.content || '')
-    .split(/\n\n(?=SHEET: )/)
-    .filter(section => section.startsWith('SHEET: '))
-    .map(section => ({ source, section })));
+  const sheets = (report.parsedEvidence || []).flatMap(file => (file.tables || []).map(table => ({ file, rows: parseMarkdownTable(table) })))
+    .filter(sheet => sheet.rows.length > 1);
   const panel = $('#parsedEvidence');
   if (!sheets.length) {
     panel.hidden = true;
     panel.innerHTML = '';
     return;
   }
-  panel.innerHTML = sheets.map(({ source, section }) => {
-    const [titleLine, ...lines] = section.split('\n');
-    const [header = [], ...body] = parseCsvRows(lines.join('\n'));
+  panel.innerHTML = sheets.map(({ file, rows }) => {
+    const [header, ...body] = rows;
     const columns = header.slice(0, 7);
     return `
       <div class="parsed-sheet">
         <div class="pipeline-title">
-          <strong>Parsed spreadsheet evidence</strong>
-          <span>${escapeHtml(source.id)} · ${escapeHtml(titleLine.replace(/^SHEET:\s*/, ''))} · ${body.length} rows</span>
+          <strong>Parsed by RocketRide</strong>
+          <span>${escapeHtml(file.name)} · ${body.length} rows</span>
         </div>
-        <p>Signal read this workbook into rows before the run; RocketRide's specialist roles received exactly these rows.</p>
+        <p>RocketRide's parse node read this file from its raw bytes; the specialist roles cited exactly this text.</p>
         <div class="parsed-table-wrap">
           <table>
             <thead><tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead>
@@ -695,12 +709,6 @@ function renderParsedSheets(report) {
   }).join('');
   panel.hidden = false;
 }
-
-const specialistRoles = [
-  { name: 'Customer Advocate', pattern: /customer|advocate/i },
-  { name: 'Skeptic', pattern: /skeptic|sceptic/i },
-  { name: 'Product Strategist', pattern: /strateg/i }
-];
 
 function wrapNodeLabel(text, maxChars, maxLines) {
   const lines = [];
@@ -720,35 +728,53 @@ function displayTraceLabel(value, fallback, maxWords = 3) {
   return words.slice(0, maxWords).join(' ') || fallback;
 }
 
+// Every edge drawn here was declared: either in the report's semantic map or by
+// a proof claim (source → the role that used it). Nothing is inferred from a
+// role's name, and roles or sources without a declared edge are not drawn.
 function buildDecisionTraceMap(report) {
-  const proofSources = [];
+  const sanitize = value => String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const sources = report.sources || [];
+  const sourceMatch = value => sources.find(source => [source.id, sanitize(source.id), source.name].includes(value));
+  const roleId = role => `agent_${role.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+  const canonical = node => {
+    if (!node) return null;
+    if (node.type === 'decision' || node.id === 'decision') return { id: 'decision' };
+    if (node.type === 'agent') {
+      const role = roleFor(node.label) || roleFor(node.id);
+      return role ? { id: roleId(role), role } : null;
+    }
+    const source = sourceMatch(node.id) || sourceMatch(node.label);
+    return source ? { id: `source_${source.id}`, source } : null;
+  };
+  const declaredNodes = new Map((report.semanticMap?.nodes || []).map(node => [node.id, canonical(node)]));
+  const allowed = (from, to) => (from.source && (to.role || to.id === 'decision')) || (from.role && to.id === 'decision');
+  const edges = [];
+  const roles = new Map();
+  const usedSources = new Map();
+  const addEdge = (from, to, kind, origin) => {
+    if (!from || !to || !allowed(from, to) || edges.some(edge => edge.from === from.id && edge.to === to.id)) return;
+    edges.push({ from: from.id, to: to.id, kind, origin });
+    [from, to].forEach(end => {
+      if (end.role) roles.set(end.id, end.role);
+      if (end.source) usedSources.set(end.id, end.source);
+    });
+  };
+  (report.semanticMap?.edges || []).forEach(edge => addEdge(declaredNodes.get(edge.from), declaredNodes.get(edge.to), edge.kind, 'semantic map'));
   (report.proofs || []).forEach(proof => {
     const source = findProofSource(proof);
-    if (source && !proofSources.some(item => item.id === source.id)) proofSources.push(source);
+    const role = roleFor(proof.agent);
+    addEdge(source && { id: `source_${source.id}`, source }, role ? { id: roleId(role), role } : { id: 'decision' }, ['challenged', 'blocked'].includes(proof.status) ? 'challenges' : 'supports', 'proof claim');
   });
-  const sources = (proofSources.length ? proofSources : report.sources || []).slice(0, 5);
-  // Finding nodes are the three specialist roles only; models sometimes put a
-  // quoted person in a proof's agent field, and that is not a finding.
-  const roleOf = name => specialistRoles.find(role => role.pattern.test(String(name || '')))?.name;
-  const agents = specialistRoles.map(role => role.name);
   const distribute = (items, x, start, end) => items.map((item, index) => ({ item, x, y: items.length === 1 ? (start + end) / 2 : start + ((end - start) * index) / (items.length - 1) }));
+  const sourceList = [...usedSources.entries()].slice(0, 6);
+  const roleList = [...roles.entries()];
   const nodes = [
-    ...distribute(sources, 105, 80, 400).map(({ item, x, y }) => ({ id: `source_${item.id}`, label: displayTraceLabel(item.name, 'Source', 2), title: item.name, sub: /\.[a-z0-9]+$/i.test(item.id) ? item.id.split('.').pop() : item.kind || 'evidence', type: 'source', x, y, radius: 34 })),
-    ...distribute(agents, 380, 130, 350).map(({ item, x, y }) => ({ id: `agent_${item.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, label: item, title: item, sub: 'finding', type: 'agent', x, y, radius: 38 })),
+    ...distribute(sourceList, 105, 80, 400).map(({ item: [id, source], x, y }) => ({ id, label: displayTraceLabel(source.name, 'Source', 2), title: source.name, sub: /\.[a-z0-9]+$/i.test(source.id) ? source.id.split('.').pop() : source.kind || 'evidence', type: 'source', x, y, radius: 34 })),
+    ...distribute(roleList, 380, 130, 350).map(({ item: [id, role], x, y }) => ({ id, label: role.name, title: role.name, sub: 'finding', type: 'agent', x, y, radius: 38 })),
     { id: 'decision', label: displayTraceLabel(report.recommendation?.title, 'Recommendation', 6), title: report.recommendation?.title, sub: 'recommendation', type: 'decision', x: 650, y: 240, radius: 52 }
   ];
-  const agentId = name => `agent_${String(name || 'Specialist').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-  const visibleSourceIds = new Set(sources.map(source => source.id));
-  const edges = (report.proofs || []).flatMap(proof => {
-    const source = findProofSource(proof);
-    if (!source || !visibleSourceIds.has(source.id)) return [];
-    const role = roleOf(proof.agent);
-    return [{ from: `source_${source.id}`, to: role ? agentId(role) : 'decision', kind: ['challenged', 'blocked'].includes(proof.status) ? 'challenges' : 'supports' }];
-  });
-  agents.forEach(name => {
-    edges.push({ from: agentId(name), to: 'decision', kind: /skeptic|challenge/i.test(name) ? 'challenges' : 'supports' });
-  });
-  return { nodes, edges };
+  const visible = new Set(nodes.map(node => node.id));
+  return { nodes, edges: edges.filter(edge => visible.has(edge.from) && visible.has(edge.to)) };
 }
 
 function renderSemanticMap(map) {
@@ -854,7 +880,7 @@ function renderReport(report) {
   renderSignals(report.signals);
   renderEngineTrace(report);
   renderParsedSheets(report);
-  renderPromises(report.promises || []);
+  renderPromises(report.promises || [], report.promiseJudge);
   renderProofs(report.proofs || []);
   renderExecutionTrace(report);
   renderSemanticMap(buildDecisionTraceMap(report));
@@ -901,6 +927,44 @@ function showReportTruth(report, origin) {
     $('.truth-banner p').innerHTML = '<strong>This file declares itself as a live RocketRide result.</strong> The browser validated its shape, not its provenance. Generate it with the included CLI for a traceable run.';
   } else {
     $('.truth-banner p').innerHTML = '<strong>This imported report is not marked as a live RocketRide result.</strong> Its contents are displayed as provided and have not been independently verified.';
+  }
+}
+
+// Completed live runs of the same scope workflow, read from the run store.
+async function prepareLiveDecisions() {
+  try {
+    const { decisions = [] } = await fetch('/api/decisions', { cache: 'no-store' }).then(response => response.json());
+    $('#liveDecisions').hidden = !decisions.length;
+    $('#liveDecisionCount').textContent = String(decisions.length);
+    $('#liveDecisionGrid').innerHTML = decisions.map(decision => `
+      <article class="live-decision">
+        <span class="eyebrow">Live run · ${escapeHtml(new Date(decision.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))} · ${decision.sources.length} source${decision.sources.length === 1 ? '' : 's'}</span>
+        <q>${escapeHtml(decision.brief)}</q>
+        <div class="live-decision-part"><span>Recommended bet</span><strong>${escapeHtml(decision.recommendation.title || '')}</strong></div>
+        <div class="live-decision-part"><span>Contradiction</span><p>${escapeHtml(decision.contradiction.title || '')}</p></div>
+        <div class="live-decision-part"><span>Next experiment</span><p>${escapeHtml(decision.experiment.title || '')}${decision.experiment.window ? ` · ${escapeHtml(decision.experiment.window)}` : ''}</p></div>
+        <button class="button button-ghost" type="button" data-open-decision="${escapeHtml(decision.id)}">Open decision</button>
+      </article>
+    `).join('');
+    document.querySelectorAll('[data-open-decision]').forEach(button => button.addEventListener('click', () => openLiveDecision(button.dataset.openDecision)));
+  } catch {
+    $('#liveDecisions').hidden = true;
+  }
+}
+
+async function openLiveDecision(runId) {
+  try {
+    const { run } = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' }).then(response => response.json());
+    const report = normalizeReport(run.report);
+    report.mode = 'live';
+    report.provenance = run.report.provenance;
+    renderReport(report);
+    showReportTruth(report, 'local');
+    scrollToReview();
+    await restoreMissionFromRun(report);
+    showToast('Opened a completed live RocketRide run. The browser did not call the model again.');
+  } catch {
+    showToast('That run could not be opened from the run store.');
   }
 }
 
@@ -1107,6 +1171,52 @@ async function analyzeSelectedScenario() {
   await replayAnalysis();
 }
 
+let liveFlowPoll;
+const liveFlowOrder = ['Parse evidence', 'Customer advocate', 'Skeptic', 'Product strategist', 'Promise judge', 'Decision synthesis', 'Enforce report contract'];
+
+// The server relays the first flow event of each step; the step that started
+// last is the one the engine is working on, and earlier steps have finished.
+function renderLiveFlow(progress) {
+  const started = new Set((progress.steps || []).map(item => item.step));
+  const current = liveFlowOrder.filter(step => started.has(step)).at(-1);
+  const finished = progress.status === 'complete';
+  document.querySelectorAll('[data-flow-step]').forEach(node => {
+    const step = node.dataset.flowStep;
+    node.classList.toggle('done', finished || (started.has(step) && step !== current));
+    node.classList.toggle('active', !finished && step === current);
+  });
+  $('#liveFlow').classList.toggle('failed', progress.status === 'failed');
+  $('#liveFlowState').textContent = finished
+    ? 'Scope report ready for human review'
+    : progress.status === 'failed'
+      ? `Stopped${current ? ` during ${current.toLowerCase()}` : ''}`
+      : current ? `RocketRide is running: ${current.toLowerCase()}` : 'Waiting for the engine';
+}
+
+function startLiveFlow() {
+  const formats = [...new Set(stagedEvidenceFiles.map(file => String(file.name).split('.').pop().toUpperCase()))];
+  $('#liveFlowFormats').textContent = formats.length ? `+ ${formats.join(' · ')}` : 'text';
+  renderLiveFlow({ status: 'running', steps: [] });
+  $('#liveFlow').hidden = false;
+  clearInterval(liveFlowPoll);
+  liveFlowPoll = setInterval(async () => {
+    try {
+      const progress = await fetch('/api/scope-progress', { cache: 'no-store' }).then(response => response.json());
+      if (progress.status === 'running') renderLiveFlow(progress);
+    } catch { /* The final state is set when the run returns. */ }
+  }, 700);
+}
+
+async function stopLiveFlow(status) {
+  clearInterval(liveFlowPoll);
+  try {
+    const progress = await fetch('/api/scope-progress', { cache: 'no-store' }).then(response => response.json());
+    renderLiveFlow({ ...progress, status });
+  } catch {
+    renderLiveFlow({ status, steps: [] });
+  }
+}
+
 async function runLiveAnalysis(event) {
   const brief = $('#factoryIdeaInput').value.trim();
   if (!brief) {
@@ -1127,6 +1237,7 @@ async function runLiveAnalysis(event) {
   $('#engineStatus code').textContent = 'running';
   setFactoryRoleState('running');
   renderPipeline(rocketRidePipeline, 'running');
+  startLiveFlow();
 
   try {
     const input = await buildRocketRideInput();
@@ -1163,6 +1274,8 @@ async function runLiveAnalysis(event) {
     setFactoryRoleState('complete');
     setProofMode(true);
     setScopeRunNotice('Scope report ready. Opening the decision for review.', 'complete');
+    await stopLiveFlow('complete');
+    void prepareLiveDecisions();
     showToast('RocketRide live run complete. Proof Mode is showing the claims tied to evidence.');
   } catch (error) {
     const technicalMessage = error instanceof Error ? error.message : 'The RocketRide scope run failed.';
@@ -1178,6 +1291,7 @@ async function runLiveAnalysis(event) {
     $('#engineStatus code').textContent = 'failed';
     setFactoryRoleState('failed');
     setScopeRunNotice(`The scope run stopped: ${message}`, 'failed');
+    await stopLiveFlow('failed');
     showToast(message, 8000);
   } finally {
     button.disabled = false;
@@ -1276,6 +1390,7 @@ renderFactoryEmpty();
 syncScopeAction();
 setProofMode(true);
 prepareLocalLiveReport();
+prepareLiveDecisions();
 prepareRocketRideHealth();
 
 $('#factoryGenerateButton').addEventListener('click', runLiveAnalysis);
