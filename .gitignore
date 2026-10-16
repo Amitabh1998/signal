@@ -15,6 +15,7 @@ dist-ssr
 data/live-report.json
 data/rocketride-health.json
 data/seed-evidence.txt
+data/runs/
 # Regenerate recording renders locally; do not grow the source repository with them.
 data/recordings/
 .impeccable/

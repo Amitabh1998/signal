@@ -58,9 +58,9 @@
               <section class="context-upload" aria-labelledby="contextUploadTitle">
                 <div class="context-copy">
                   <div class="context-label"><strong id="contextUploadTitle">Supporting files</strong><span>Optional</span></div>
-                  <p id="contextHint">Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, and CSV are supported.</p>
+                  <p id="contextHint">Add a brief, spec, notes, or data that the scope workflow must consider. Text, Markdown, JSON, JSONL, CSV, and XLSX are supported.</p>
                 </div>
-                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.csv" aria-label="Attach context files" />
+                <input class="file-input" id="fileInput" type="file" multiple accept=".txt,.md,.json,.jsonl,.csv,.xlsx" aria-label="Attach context files" />
                 <label class="file-select" for="fileInput">Choose files</label>
               </section>
               <section class="attachment-list" id="attachmentList" aria-live="polite" hidden>
@@ -156,7 +156,7 @@
                 <div><dt>Coding runner</dt><dd id="executionRunner">Not enabled</dd></div>
                 <div><dt>Quality gates</dt><dd id="executionTests">Tests + build</dd></div>
                 <div><dt>RocketRide review</dt><dd id="executionDeliveryReview">Not enabled</dd></div>
-                <div><dt>Pull request</dt><dd id="executionPr">Not created</dd></div>
+                <div><dt id="executionPrLabel">Pull request</dt><dd id="executionPr">Not created</dd></div>
               </dl>
               <div class="execution-action">
                 <button class="button button-primary" id="dispatchExecutionButton" type="button" disabled><span>▶</span> Run implementation</button>
@@ -167,8 +167,9 @@
                 <li data-execution-phase="implementing"><strong>Code change</strong><span>Dispatch the configured coding agent with the approved mission.</span></li>
                 <li data-execution-phase="testing"><strong>Quality gates</strong><span>Run the repository tests and build.</span></li>
                 <li data-execution-phase="delivery-review"><strong>Delivery review</strong><span>RocketRide reconciles the mission, diff summary, coding summary, and recorded quality gates.</span></li>
-                <li data-execution-phase="opening-pr"><strong>Open review</strong><span>Commit the tested diff and open a pull request.</span></li>
+                <li data-execution-phase="opening-pr"><strong>Open review</strong><span id="openReviewDetail">Commit the tested diff and open a pull request.</span></li>
               </ol>
+              <section class="delivery-review" id="deliveryReviewPanel" aria-label="RocketRide delivery review" hidden></section>
             </section>
           </section>
 
@@ -243,7 +244,7 @@
             <div class="factory-operators-heading">
               <div>
                 <h3 id="factoryOperatorsTitle">The roles behind this decision</h3>
-                <p>RocketRide runs the three specialist roles in parallel, then reconciles and validates their outputs before a coding mission can begin.</p>
+                <p>RocketRide runs the three specialist roles on the same evidence, then an independent judge grades them before RocketRide reconciles and validates their outputs before a coding mission can begin.</p>
               </div>
             </div>
             <ol class="factory-operator-list">
@@ -261,6 +262,16 @@
             </div>
             <div class="pipeline" id="pipeline"></div>
           </section>
+
+          <section class="engine-timeline" id="engineTimeline" aria-label="RocketRide engine timeline" hidden>
+            <div class="pipeline-title">
+              <strong>Timeline</strong>
+              <span id="engineTimelineLabel"></span>
+            </div>
+            <ol id="engineTimelineRows"></ol>
+          </section>
+
+          <section class="parsed-evidence" id="parsedEvidence" aria-label="Parsed spreadsheet evidence" hidden></section>
         </details>
 
         <nav class="view-tabs" aria-label="Decision views">
@@ -446,7 +457,7 @@
         </div>
         <button class="icon-button" id="closeTrace" aria-label="Close trace">×</button>
       </div>
-      <div class="trace-body">
+      <div class="trace-body" id="traceBody">
         <div class="trace-line"></div>
         <div class="trace-event"><b>01</b><div><span>Source evidence</span><p>11 passages mentioned setup uncertainty, permissions, or fear of breaking a shared workspace.</p></div></div>
         <div class="trace-event"><b>02</b><div><span>Customer advocate</span><p>Classified the dominant job as “help me configure this safely,” not “give me more controls.”</p></div></div>
@@ -455,8 +466,8 @@
         <div class="trace-event is-final"><b>05</b><div><span>Synthesis</span><p>Recommended guided setup because it addresses the strongest evidence while preserving optionality.</p></div></div>
       </div>
       <div class="dialog-footer">
-        <span>Demo trace — representative, not produced by a live run</span>
-        <code>pipelineTraceLevel: summary</code>
+        <span id="traceProvenance">Demo trace — representative, not produced by a live run</span>
+        <code id="traceLevel">pipelineTraceLevel: summary</code>
       </div>
     </dialog>
 

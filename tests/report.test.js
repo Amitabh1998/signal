@@ -3,8 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { demoReport } from '../src/demo-data.js';
 import { attachEvidenceContent, parseEvidenceBundle } from '../src/evidence.js';
+import { verifyReportProofs } from '../src/proof-verification.js';
 import { normalizeReport, unwrapRocketRideResponse, validateReport } from '../src/report.js';
 import { scenarioLibrary } from '../src/scenarios.js';
+import { ingestEvidenceFiles } from '../scripts/evidence-ingestion.mjs';
 
 test('the bundled demo is a valid, explicitly non-live report', () => {
   assert.deepEqual(validateReport(demoReport), { ok: true, errors: [] });
@@ -35,6 +37,17 @@ test('RocketRide extract_data single-row tables are unwrapped', () => {
   );
 });
 
+test('RocketRide extract_data item wrappers are unwrapped', () => {
+  assert.deepEqual(unwrapRocketRideResponse({ answers: [{ items: [{ verdict: 'ready' }] }] }), { verdict: 'ready' });
+});
+
+test('RocketRide extract_data split rows keep the most complete row', () => {
+  assert.deepEqual(
+    unwrapRocketRideResponse({ answers: ['[{"verdict":"needs-review"},{"verdict":"needs-review","summary":"Full review","checks":[]}]'] }),
+    { verdict: 'needs-review', summary: 'Full review', checks: [] }
+  );
+});
+
 test('original evidence sections are preserved without including the task prompt', () => {
   const evidence = 'SOURCE: Call — Maya\nExact customer words.\n\nSOURCE: Metrics\nObserved result.\n\nTASK\nMake a decision.';
   assert.deepEqual(parseEvidenceBundle(evidence), [
@@ -50,10 +63,15 @@ test('pipeline has real parallel specialists and no embedded credentials', async
   const raw = await readFile(new URL('../pipelines/signal-room.pipe', import.meta.url), 'utf8');
   const pipeline = JSON.parse(raw);
   const providers = pipeline.components.map(component => component.provider);
-  assert.equal(providers.filter(provider => provider === 'llm_openai').length, 5);
+  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 6);
+  assert.ok(pipeline.components.some(component => component.name === 'Independent promise judge'));
+  assert.match(raw, /Copy promise assessments from the independent Promise Judge/);
   assert.ok(providers.includes('answer_documents'));
   assert.ok(providers.includes('extract_data'));
-  assert.match(raw, /\$\{ROCKETRIDE_OPENAI_KEY\}/);
+  assert.match(raw, /https:\/\/openrouter\.ai\/api\/v1/);
+  assert.match(raw, /\$\{ROCKETRIDE_OPENROUTER_KEY\}/);
+  assert.match(raw, /openai\/gpt-4o-mini/);
+  assert.match(raw, /openai\/gpt-4o/);
   assert.doesNotMatch(raw, /sk-[A-Za-z0-9]/);
 });
 
@@ -66,9 +84,22 @@ test('delivery review is a separate RocketRide workflow with bounded reviewer ro
   assert.ok(names.includes('Quality gatekeeper'));
   assert.ok(names.includes('Release skeptic'));
   assert.ok(providers.includes('extract_data'));
+  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 5);
   assert.match(raw, /never automatic release/i);
-  assert.match(raw, /\$\{ROCKETRIDE_OPENAI_KEY\}/);
+  assert.match(raw, /https:\/\/openrouter\.ai\/api\/v1/);
+  assert.match(raw, /\$\{ROCKETRIDE_OPENROUTER_KEY\}/);
   assert.doesNotMatch(raw, /sk-[A-Za-z0-9]/);
+});
+
+test('execution ships a real tested patch instead of a simulated delivery summary', async () => {
+  const execution = await readFile(new URL('../scripts/signal-execute.mjs', import.meta.url), 'utf8');
+  assert.match(execution, /const actualDiff = run\('git', \['diff'/);
+  assert.match(execution, /actualDiff: actualDiff\.slice/);
+  assert.match(execution, /qualityGates\.push\(\{ name: 'npm test', status: 'passed', output:/);
+  assert.match(execution, /qualityGates\.push\(\{ name: 'npm run build', status: 'passed', output:/);
+  assert.match(execution, /run\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
+  assert.match(execution, /SIGNAL_EXECUTION_PR_MODE/);
+  assert.doesNotMatch(execution, /'-a', 'never'/);
 });
 
 test('the local UI exposes an honest guided tour and saved-live-run loader', async () => {
@@ -96,7 +127,8 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(html, /Open implementation decision/);
   assert.match(html, /Choose files/);
   assert.match(app, /Live scope report/);
-  assert.match(app, /Text, Markdown, JSON, and CSV are supported/);
+  assert.match(app, /Text, Markdown, JSON, JSONL, CSV, and XLSX are supported/);
+  assert.match(html, /\.xlsx/);
   assert.match(app, /Before build: define the categories/);
   assert.match(app, /renderScenarios/);
   assert.match(app, /analyzeSelectedScenario/);
@@ -116,11 +148,38 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /syncScopeAction/);
   assert.match(app, /setScopeRunNotice/);
   assert.match(app, /RocketRide is offline on this Mac/);
+  assert.match(app, /acceptanceCriteria/);
   assert.match(app, /scope-workflow-running/);
   const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
   assert.match(server, /scopeWorkflowRunning/);
   assert.match(server, /scope-workflow-running/);
   assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
+});
+
+test('binary XLSX evidence is parsed into source text with provenance', async () => {
+  const bytes = await readFile(new URL('../data/source-packs/security-center-q4/05-enterprise-pipeline.xlsx', import.meta.url));
+  const sources = await ingestEvidenceFiles([{
+    name: 'enterprise-pipeline.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    dataBase64: bytes.toString('base64')
+  }]);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].kind, 'SHEET');
+  assert.match(sources[0].content, /SHEET: Enterprise Pipeline/);
+  assert.match(sources[0].content, /Finlytics/);
+  assert.match(sources[0].sha256, /^[a-f0-9]{64}$/);
+});
+
+test('proof verification distinguishes exact quotes from unsupported text', () => {
+  const report = verifyReportProofs({
+    sources: [{ id: 'source-1', name: 'Call', content: 'The exact customer quote is here.' }],
+    proofs: [
+      { sourceId: 'source-1', quote: 'exact customer quote' },
+      { sourceId: 'source-1', quote: 'Paraphrase: the customer quote is exact' },
+      { sourceId: 'source-1', quote: 'Invented words' }
+    ]
+  });
+  assert.deepEqual(report.proofs.map(proof => proof.verification.status), ['verbatim', 'paraphrase', 'not-found']);
 });
 
 test('all seeded scenarios are valid and have traceable evidence', () => {

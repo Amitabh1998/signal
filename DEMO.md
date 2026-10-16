@@ -1,62 +1,67 @@
-# Promise Factory Demo Script
+# Signal end-to-end demo
 
-## One-line pitch
+## Product promise
 
-Promise Factory turns one active software idea into a build-ready agent-product blueprint before anyone writes code.
+Signal turns a request and supporting evidence into a source-backed scope decision, an approved build mission, a tested code change, a delivery review, and a pull request for human review.
 
-## Active demo topic
+## Seeded inputs versus real execution
 
-**Build a browser workflow agent that watches a user complete a repetitive browser task once, then turns it into a reusable automation with checks, approvals, and handoff notes.**
+- The browser-agent, invoice, and onboarding packs are committed seed inputs.
+- Seed reports are deterministic previews and are always labeled `SEED`.
+- A `LIVE RUN` label requires a real RocketRide result, persisted run id, provenance, and engine trace.
+- A local review branch proves code generation and Git quality gates but is never called a pull request.
+- The final GitHub demo must finish with a real PR URL.
 
-This is more demoable than a static admin/security use case because the audience can immediately picture the clip:
-
-1. A human enriches one lead in the browser.
-2. The agent watches the steps.
-3. RocketRide coordinates specialist teams.
-4. The product returns a blueprint: requirements, flows, architecture, security gates, tests, observability, and build queue.
-
-## Best 90-second walkthrough
-
-1. Open `http://127.0.0.1:4173`.
-2. Say: "This is Promise Factory. It does not jump straight from prompt to code. It first generates the full product blueprint."
-3. Click **Load factory idea**.
-4. Click **Generate blueprint** or **Run agent teams**.
-5. Show the 12 generated artifacts.
-6. Point to **Conflict resolution**: autonomy vs trust, robust replay, data safety.
-7. Point to **Readiness gates**: this is what makes it build-ready instead of just a pretty prompt.
-8. Scroll to **Choose the workflow wedge** and show the source packs: lead enrichment, invoice matching, onboarding checks.
-9. Click **Load latest live run** to show the RocketRide-generated result from `data/live-report.json`.
-10. Open **Proof mode** and click proof claims to show source-backed reasoning.
-
-## Talk track
-
-> "Most coding agents start too late. They jump from a vague idea to implementation. Promise Factory starts earlier: it coordinates product, architecture, security, QA, observability, and deployment agents into one build-ready package. The demo idea is a browser workflow agent: watch one successful human run, infer steps and variables, add checks, then replay only after approval."
-
-## Live RocketRide run
+## Prepare the safe coding target
 
 ```bash
-npm run seed:scenario -- --scenario browser-workflow-agent
-npm run analyze:live -- --input data/seed-evidence.txt --output data/live-report.json
+npm install
+npm run demo:target
+```
+
+Copy the printed repository values into `.env`. For a local proof run use:
+
+```dotenv
+SIGNAL_EXECUTION_ENABLED=1
+SIGNAL_EXECUTION_REPO=/absolute/path/printed/by/demo-target
+SIGNAL_EXECUTION_BASE=main
+SIGNAL_EXECUTION_REMOTE=origin
+SIGNAL_EXECUTION_PR_MODE=local
+SIGNAL_EXECUTION_RUNNER=claude
+```
+
+Use `SIGNAL_EXECUTION_PR_MODE=github` only when the trusted repository has a GitHub remote and `gh auth status` succeeds.
+
+## Configure the live scope and delivery workflows
+
+```dotenv
+ROCKETRIDE_URI=ws://localhost:5565
+ROCKETRIDE_AUTH=
+ROCKETRIDE_APIKEY=MYAPIKEY
+ROCKETRIDE_OPENROUTER_KEY=your-openrouter-key
+SIGNAL_DELIVERY_REVIEW_ENABLED=1
+SIGNAL_DELIVERY_REVIEW_REQUIRED=1
+```
+
+Verify the engine and both pipelines:
+
+```bash
+npm run rocketride:up
 npm run rocketride:check
 ```
 
-Then refresh the app and click **Load latest live run**.
+## Demonstration flow
 
-## Recorded walkthrough
-
-```bash
-npm run demo:record
-open data/recordings/promise-factory-flow/promise-factory-flow.mp4
-```
-
-This regenerates the RocketRide intro, Promise Theory / Semantic Spacetime explainer, captured frames, real DOM-measured click targets, HyperFrames composition, subtitles, narration, and final 54-second MP4 from the current local UI.
-
-## What to emphasize
-
-- **Active use case:** browser work becomes an agent workflow.
-- **RocketRide role:** coordinates specialist agents and validates the output contract.
-- **Founder value:** a raw idea becomes a build plan with risks, gates, and next tasks.
-- **Trust:** the product shows conflicts, proof, and approval gates instead of hiding behind "AI magic."
+1. Open `http://127.0.0.1:4173`.
+2. Enter the browser-workflow request.
+3. Attach the seeded text, JSON, and XLSX sources.
+4. Run the live scope workflow.
+5. Open the real engine trace and parsed spreadsheet evidence.
+6. Review the recommendation, contradiction, experiment, verified proof, and independently judged promises.
+7. Create the approved build mission.
+8. Run implementation against the trusted demo repository.
+9. Show the isolated branch, coding-agent change, passing tests/build, actual-diff delivery review, and citation status.
+10. Open the real GitHub pull request for human review.
 
 ## Verification
 
