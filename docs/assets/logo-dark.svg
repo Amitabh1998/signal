@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="96" viewBox="0 0 360 96" role="img" aria-label="Signal">
+  <rect x="8" y="12" width="72" height="72" rx="16" fill="#10201f" stroke="#4f6b69" stroke-width="3"/>
+  <circle cx="28" cy="48" r="6" fill="#3fb8b3"/>
+  <circle cx="44" cy="48" r="6" fill="#3fb8b3"/>
+  <circle cx="60" cy="48" r="6" fill="#3fb8b3"/>
+  <text x="104" y="66" fill="#eef4f3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="54" font-weight="700" letter-spacing="-1.5">Signal</text>
+</svg>
