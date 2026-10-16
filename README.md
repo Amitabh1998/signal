@@ -28,7 +28,7 @@
 ---
 
 > [!NOTE]
-> Signal is a working prototype. The seed scenarios run fully offline. Live scoping needs a RocketRide server, and repository execution stays **off** until you enable it for one repository you trust.
+> Signal is a working prototype. Every scope decision and delivery review runs on a RocketRide engine, either locally in Docker (`npm run rocketride:up`) or on a remote server. Bundled seed scenarios let you explore the interface without one. Repository execution stays **off** until you enable it for one repository you trust.
 
 ## The problem
 
