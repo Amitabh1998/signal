@@ -1,0 +1,11 @@
+{
+  "project_id": "7f0c2a4e-6a51-4b0e-9a2d-3c1b9e8f5d21",
+  "version": 1,
+  "components": [
+    { "id": "file_in", "provider": "webhook", "name": "Evidence file", "config": { "hideForm": true, "mode": "Source", "parameters": {}, "type": "webhook" }, "ui": { "position": { "x": 20, "y": 120 }, "nodeType": "default", "formDataValid": true } },
+    { "id": "parse_file", "provider": "parse", "name": "Parse file", "config": {}, "input": [{ "lane": "tags", "from": "file_in" }], "ui": { "position": { "x": 240, "y": 120 }, "nodeType": "default", "formDataValid": true } },
+    { "id": "parsed_text", "provider": "response_text", "name": "Parsed text", "config": { "laneName": "text" }, "input": [{ "lane": "text", "from": "parse_file" }], "ui": { "position": { "x": 460, "y": 60 }, "nodeType": "default", "formDataValid": true } },
+    { "id": "parsed_table", "provider": "response_table", "name": "Parsed tables", "config": { "laneName": "table" }, "input": [{ "lane": "table", "from": "parse_file" }], "ui": { "position": { "x": 460, "y": 200 }, "nodeType": "default", "formDataValid": true } }
+  ],
+  "viewport": { "x": 0, "y": 0, "zoom": 1 }
+}

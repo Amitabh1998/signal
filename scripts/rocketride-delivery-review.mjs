@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { RocketRideClient } from 'rocketride';
@@ -82,21 +83,85 @@ const auth = String(args.auth || process.env.ROCKETRIDE_AUTH || process.env.ROCK
 if (!inputPath) throw new Error('A delivery evidence input is required.');
 
 const deliveryBundle = JSON.parse(await readFile(inputPath, 'utf8'));
-// Every diff line carries its new-file path:line so reviewers can cite exact lines.
-const { numbered, lines: diffLines } = numberDiff(deliveryBundle.actualDiff);
-const flow = createFlowRecorder(deliveryFlowSteps);
-const client = new RocketRideClient({ uri, auth: auth || undefined, persist: false, requestTimeout: 180_000, clientName: 'Signal delivery review', clientVersion: '0.1.0', onEvent: async message => flow.onEvent(message) });
+const { repoPath, commitRange } = deliveryBundle;
+if (!repoPath || !commitRange?.base || !commitRange?.head) throw new Error('The delivery bundle needs repoPath and commitRange { base, head }.');
+const git = (...gitArgs) => execFileSync('git', ['-C', repoPath, ...gitArgs], { encoding: 'utf8', maxBuffer: 20_000_000 });
+// Signal's own reading of the same commit: line-numbered for citations, and
+// the stats the agent's read-only git.diff result must match.
+// Generated and vendored files are left out of what reviewers cite and what
+// Signal verifies; override with a comma-separated SIGNAL_REVIEW_IGNORE.
+const reviewIgnore = (process.env.SIGNAL_REVIEW_IGNORE ?? 'dist/,build/,coverage/,node_modules/,*.min.js,*.map,package-lock.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb')
+  .split(',').map(entry => entry.trim()).filter(Boolean)
+  .map(entry => `:(exclude,glob)${entry.endsWith('/') ? `${entry}**` : entry.includes('/') ? entry : `**/${entry}`}`);
+const patch = git('diff', '--no-ext-diff', '--unified=40', commitRange.base, commitRange.head, '--', '.', ...reviewIgnore);
+const { numbered, lines: diffLines } = numberDiff(patch);
+const [, filesChanged = '0', insertions = '0', deletions = '0'] = git('diff', '--shortstat', commitRange.base, commitRange.head)
+  .match(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/) || [];
+const commitStats = { filesChanged: Number(filesChanged), insertions: Number(insertions), deletions: Number(deletions) };
+
+// The pipeline's tool_git node is bound to this commit's worktree, read-only.
+const pipeline = JSON.parse(await readFile(pipelinePath, 'utf8'));
+const gitNode = pipeline.components.find(component => component.provider === 'tool_git');
+if (!gitNode) throw new Error(`${pipelinePath} has no tool_git node.`);
+gitNode.config = { ...gitNode.config, repoPath, readOnlyMode: true, safeMode: true };
+
+const flow = createFlowRecorder(deliveryFlowSteps, { capture: ['diff_document'], toolNodes: [gitNode.id] });
+const client = new RocketRideClient({ uri, auth: auth || undefined, persist: false, requestTimeout: 300_000, clientName: 'Signal delivery review', clientVersion: '0.1.0', onEvent: async message => flow.onEvent(message) });
+const short = sha => String(sha).slice(0, 7);
+
+function agentEvidence() {
+  const calls = flow.toolCalls.map(call => {
+    if (call.tool === 'diff') {
+      const output = call.output || {};
+      return { tool: 'diff', refA: call.input.ref_a, refB: call.input.ref_b, filesChanged: output.files_changed, insertions: output.insertions, deletions: output.deletions };
+    }
+    if (call.tool === 'log') {
+      const [entry] = Array.isArray(call.output) ? call.output : [];
+      return { tool: 'log', sha: entry?.sha, subject: entry?.message };
+    }
+    return { tool: call.tool, input: call.input };
+  });
+  const diff = calls.find(call => call.tool === 'diff');
+  const log = calls.find(call => call.tool === 'log');
+  const readTheCommit = Boolean(diff)
+    && String(diff.refA || '').startsWith(short(commitRange.base))
+    && String(diff.refB || '').startsWith(short(commitRange.head));
+  return {
+    node: 'agent_rocketride',
+    tool: 'tool_git',
+    readOnly: true,
+    calls,
+    commit: { sha: commitRange.head, short: short(commitRange.head), subject: log?.subject || '' },
+    stats: diff ? { filesChanged: diff.filesChanged, insertions: diff.insertions, deletions: diff.deletions } : null,
+    commitStats,
+    // True only when the agent's own git.diff targeted this commit and returned its exact stats.
+    matchesCommit: readTheCommit && diff.filesChanged === commitStats.filesChanged && diff.insertions === commitStats.insertions && diff.deletions === commitStats.deletions,
+    summary: String(flow.captured.diff_document || '').trim().slice(0, 4000)
+  };
+}
+
 let token;
+// Cancel and timeouts arrive as SIGTERM: stop the engine task before exiting.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, async () => {
+    if (token) await Promise.race([client.terminate(token).catch(() => {}), new Promise(resolveWait => setTimeout(resolveWait, 3000))]);
+    try { await client.disconnect(); } catch { /* Exiting anyway. */ }
+    process.exit(130);
+  });
+}
 try {
   console.log(`Connecting to RocketRide at ${uri}…`);
   await client.connect();
-  const run = await client.use({ filepath: pipelinePath, pipelineTraceLevel: 'summary', name: 'Signal delivery review' });
+  const run = await client.use({ pipeline, pipelineTraceLevel: 'full', name: 'Signal delivery review' });
   token = run.token;
   await client.addMonitor({ token }, ['flow']);
-  const rawResult = await client.send(token, JSON.stringify({ ...deliveryBundle, actualDiff: numbered }, null, 2), { name: inputPath.split('/').at(-1), signalDeliveryReview: true }, 'application/json');
+  const { repoPath: _localPath, ...shared } = deliveryBundle;
+  const rawResult = await client.send(token, JSON.stringify({ ...shared, numberedDiff: numbered.slice(0, 300_000) }, null, 2), { name: inputPath.split('/').at(-1), signalDeliveryReview: true }, 'application/json');
   if (!rawResult) throw new Error('RocketRide returned no delivery review.');
   const review = normalizeDeliveryReview(unwrapRocketRideResponse(rawResult), diffLines);
-  review.provenance = { engineUri: uri, pipeline: pipelinePath.split('/').at(-1), pipelineTraceLevel: 'summary', taskTokenPrefix: token.slice(0, 10), importedFrom: inputPath.split('/').at(-1), ...engineTrace(flow.summarize()) };
+  review.agent = agentEvidence();
+  if (!review.agent.calls.some(call => call.tool === 'diff')) throw new Error('The diff reader agent did not call git_reader.diff.');
+  review.provenance = { engineUri: uri, pipeline: pipelinePath.split('/').at(-1), pipelineTraceLevel: 'full', taskTokenPrefix: token.slice(0, 10), importedFrom: inputPath.split('/').at(-1), ...engineTrace(flow.summarize()) };
   await writeFile(outputPath, `${JSON.stringify(review, null, 2)}\n`, 'utf8');
   console.log(`Live RocketRide delivery review written to ${outputPath}`);
 } finally {

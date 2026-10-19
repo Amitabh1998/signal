@@ -43,7 +43,7 @@ SIGNAL_DELIVERY_REVIEW_ENABLED=1
 SIGNAL_DELIVERY_REVIEW_REQUIRED=1
 ```
 
-Verify the engine and both pipelines:
+Verify the engine and all three pipelines:
 
 ```bash
 npm run rocketride:up

@@ -111,8 +111,26 @@ export function normalizeReport(candidate) {
       to: cleanText(promise?.to, 'Observer'),
       body: cleanText(promise?.body, 'No promise body returned.'),
       evidence: cleanText(promise?.evidence, 'No assessment evidence returned.'),
-      assessment: ['kept', 'qualified', 'broken'].includes(promise?.assessment) ? promise.assessment : 'qualified'
+      assessment: ['kept', 'qualified', 'broken'].includes(promise?.assessment) ? promise.assessment : 'qualified',
+      reason: cleanText(promise?.reason),
+      gradedBy: promise?.gradedBy === 'promise-judge' ? 'promise-judge' : 'synthesis'
     })) : [],
+    parsedEvidence: Array.isArray(candidate.parsedEvidence) ? candidate.parsedEvidence.slice(0, 20).map(item => ({
+      name: cleanText(item?.name, 'Evidence file'),
+      kind: cleanText(item?.kind, 'FILE'),
+      mimeType: cleanText(item?.mimeType),
+      characters: cleanCount(item?.characters),
+      tables: Array.isArray(item?.tables) ? item.tables.filter(table => typeof table === 'string').slice(0, 4) : []
+    })) : [],
+    promiseJudge: ['applied', 'unavailable'].includes(candidate.promiseJudge?.status)
+      ? {
+        status: candidate.promiseJudge.status,
+        judgments: cleanCount(candidate.promiseJudge.judgments),
+        disagreements: Array.isArray(candidate.promiseJudge.disagreements) ? candidate.promiseJudge.disagreements.slice(0, 6).map(item => ({
+          agent: cleanText(item?.agent), synthesizer: cleanText(item?.synthesizer), judge: cleanText(item?.judge)
+        })) : []
+      }
+      : { status: 'not-recorded', judgments: 0, disagreements: [] },
     semanticMap: {
       nodes: Array.isArray(candidate.semanticMap?.nodes) ? candidate.semanticMap.nodes.slice(0, 30).map((node, index) => ({
         id: cleanText(node?.id, `node_${index + 1}`).replace(/[^a-zA-Z0-9_-]/g, '_'),
@@ -132,11 +150,12 @@ export function normalizeReport(candidate) {
   };
 
   // Models often leave the evidence tallies at zero while still returning
-  // graded proof claims; count those claims instead of showing "0 supporting".
+  // graded proof claims; count the claims whose quotes were verified instead.
   const { recommendation, proofs } = report;
   if (!recommendation.supportingEvidence && !recommendation.challengingEvidence && proofs.length) {
-    recommendation.supportingEvidence = proofs.filter(proof => proof.status === 'supported').length;
-    recommendation.challengingEvidence = proofs.filter(proof => ['challenged', 'blocked'].includes(proof.status)).length;
+    const verified = proofs.filter(proof => ['verbatim', 'paraphrase'].includes(proof.verification.status));
+    recommendation.supportingEvidence = verified.filter(proof => proof.status === 'supported').length;
+    recommendation.challengingEvidence = verified.filter(proof => ['challenged', 'blocked'].includes(proof.status)).length;
   }
   return report;
 }

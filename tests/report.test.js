@@ -6,7 +6,7 @@ import { attachEvidenceContent, parseEvidenceBundle } from '../src/evidence.js';
 import { verifyReportProofs } from '../src/proof-verification.js';
 import { normalizeReport, unwrapRocketRideResponse, validateReport } from '../src/report.js';
 import { scenarioLibrary } from '../src/scenarios.js';
-import { ingestEvidenceFiles } from '../scripts/evidence-ingestion.mjs';
+import { acceptUploads } from '../scripts/evidence-ingestion.mjs';
 
 test('the bundled demo is a valid, explicitly non-live report', () => {
   assert.deepEqual(validateReport(demoReport), { ok: true, errors: [] });
@@ -59,6 +59,24 @@ test('original evidence sections are preserved without including the task prompt
   assert.doesNotMatch(attached[1].content, /Make a decision/);
 });
 
+test('model-named sources are matched to the file they came from, never by position', () => {
+  const evidence = [
+    'SOURCE: 04-support-tickets.jsonl\n{"id":"TCK-1845","evidence":"Security committee asked for retention."}',
+    'SOURCE: 01-customer-call-nadia-finlytics.md\nThe issue is whether I can approve broader rollout.',
+    'SOURCE: 05-enterprise-pipeline.xlsx\nOPP-901\tFinlytics'
+  ].join('\n\n');
+  const attached = attachEvidenceContent([
+    { id: 'TCK-1845', name: 'HelioBank Security Ticket' },
+    { id: '01-customer-call-nadia-finlytics.md', name: 'Customer Call Transcript: Nadia' },
+    { id: 'pipeline', name: 'Enterprise Pipeline' },
+    { id: 'unknown', name: 'Board deck' }
+  ], evidence);
+  assert.match(attached[0].content, /TCK-1845/);
+  assert.match(attached[1].content, /approve broader rollout/);
+  assert.match(attached[2].content, /OPP-901/);
+  assert.deepEqual([attached[3].content, attached[3].contentStatus], ['', 'metadata']);
+});
+
 test('pipeline has real parallel specialists and no embedded credentials', async () => {
   const raw = await readFile(new URL('../pipelines/signal-room.pipe', import.meta.url), 'utf8');
   const pipeline = JSON.parse(raw);
@@ -84,21 +102,31 @@ test('delivery review is a separate RocketRide workflow with bounded reviewer ro
   assert.ok(names.includes('Quality gatekeeper'));
   assert.ok(names.includes('Release skeptic'));
   assert.ok(providers.includes('extract_data'));
-  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 5);
+  assert.equal(providers.filter(provider => provider === 'llm_openai_api').length, 6);
+  // The diff is read by an agent through git tools that cannot write.
+  const agent = pipeline.components.find(component => component.provider === 'agent_rocketride');
+  const git = pipeline.components.find(component => component.provider === 'tool_git');
+  assert.ok(agent?.config.require_tool_call);
+  assert.equal(git.config.readOnlyMode, true);
+  assert.deepEqual(git.control, [{ classType: 'tool', from: agent.id }]);
+  assert.ok(pipeline.components.some(component => component.provider === 'memory_internal' && component.control?.[0]?.from === agent.id));
   assert.match(raw, /never automatic release/i);
   assert.match(raw, /https:\/\/openrouter\.ai\/api\/v1/);
   assert.match(raw, /\$\{ROCKETRIDE_OPENROUTER_KEY\}/);
   assert.doesNotMatch(raw, /sk-[A-Za-z0-9]/);
 });
 
-test('execution ships a real tested patch instead of a simulated delivery summary', async () => {
+// Behaviour (setup, gates, push, PR, failure, timeout, cancel) is covered in executor.test.js.
+test('execution reviews the committed patch before anything is pushed', async () => {
   const execution = await readFile(new URL('../scripts/signal-execute.mjs', import.meta.url), 'utf8');
-  assert.match(execution, /const actualDiff = run\('git', \['diff'/);
-  assert.match(execution, /actualDiff: actualDiff\.slice/);
-  assert.match(execution, /qualityGates\.push\(\{ name: 'npm test', status: 'passed', output:/);
-  assert.match(execution, /qualityGates\.push\(\{ name: 'npm run build', status: 'passed', output:/);
-  assert.match(execution, /run\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
-  assert.match(execution, /SIGNAL_EXECUTION_PR_MODE/);
+  assert.match(execution, /commitRange: \{ base: baseCommit, head \}/);
+  assert.match(execution, /repoPath: worktree/);
+  const review = execution.indexOf('scripts/rocketride-delivery-review.mjs');
+  assert.ok(review > 0 && review < execution.indexOf("await git(worktree, 'push'"));
+  assert.match(execution, /'--permission-mode', 'acceptEdits'/);
+  assert.match(execution, /'--strict-mcp-config'/);
+  assert.match(execution, /'--max-budget-usd', String\(agentBudget\)/);
+  assert.match(execution, /exec\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
   assert.doesNotMatch(execution, /'-a', 'never'/);
 });
 
@@ -134,7 +162,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /analyzeSelectedScenario/);
   assert.match(app, /runLiveAnalysis/);
   assert.match(app, /renderProofs/);
-  assert.match(app, /Absence means "not checked," never "healthy/);
+  assert.match(app, /fetch\('\/api\/health'/);
   assert.match(app, /get\('tour'\) === '1'/);
   assert.match(app, /never calls a model/);
   assert.match(app, /refreshConnections/);
@@ -147,27 +175,24 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /handleFileSelection/);
   assert.match(app, /syncScopeAction/);
   assert.match(app, /setScopeRunNotice/);
-  assert.match(app, /RocketRide is offline on this Mac/);
+  assert.match(app, /'engine-offline': 'RocketRide is not reachable/);
   assert.match(app, /acceptanceCriteria/);
-  assert.match(app, /scope-workflow-running/);
+  // A second click attaches to the active run instead of starting another.
+  assert.match(app, /payload\.code === 'run-active'/);
   const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
-  assert.match(server, /scopeWorkflowRunning/);
-  assert.match(server, /scope-workflow-running/);
+  assert.match(server, /runs\.startScope/);
+  assert.match(server, /allowedHosts\.has/);
   assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
 });
 
-test('binary XLSX evidence is parsed into source text with provenance', async () => {
+test('binary XLSX uploads are fingerprinted and passed to RocketRide unparsed', async () => {
   const bytes = await readFile(new URL('../data/source-packs/security-center-q4/05-enterprise-pipeline.xlsx', import.meta.url));
-  const sources = await ingestEvidenceFiles([{
-    name: 'enterprise-pipeline.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    dataBase64: bytes.toString('base64')
-  }]);
-  assert.equal(sources.length, 1);
-  assert.equal(sources[0].kind, 'SHEET');
-  assert.match(sources[0].content, /SHEET: Enterprise Pipeline/);
-  assert.match(sources[0].content, /Finlytics/);
-  assert.match(sources[0].sha256, /^[a-f0-9]{64}$/);
+  const [upload] = acceptUploads([{ name: 'enterprise-pipeline.xlsx', dataBase64: bytes.toString('base64') }]);
+  assert.equal(upload.kind, 'SHEET');
+  assert.equal(upload.mimeType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.ok(upload.buffer.equals(bytes));
+  assert.match(upload.sha256, /^[a-f0-9]{64}$/);
+  assert.throws(() => acceptUploads([{ name: 'notes.exe', dataBase64: 'AA==' }]), /not supported/);
 });
 
 test('proof verification distinguishes exact quotes from unsupported text', () => {

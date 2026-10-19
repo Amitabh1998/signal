@@ -76,7 +76,7 @@ flowchart LR
 
 **You describe the change.** Name the user, the behavior that should change, and any constraints worth protecting. Attach a brief, spec, notes, or data if they change the scope.
 
-**Signal scopes it.** The request and files go to the RocketRide scope workflow. Three specialist roles work concurrently, a promise judge assesses what each one committed to, a synthesis step reconciles them, and a JSON contract step validates the result before it reaches the UI. Models are told not to invent facts and to state uncertainty when evidence is thin. Signal records the engine's flow events, so you see the steps that actually ran, with timings.
+**Signal scopes it.** RocketRide's parse node reads every attached file from its raw bytes, spreadsheets included. The scope workflow then gives all of it to three specialist roles, an independent promise judge (GPT-4o) grades what each one committed to, a synthesis step (GPT-4o) reconciles them, and a JSON contract step validates the result before it reaches the UI. A live graph lights up each step as the engine reaches it. Models are told not to invent facts and to state uncertainty when evidence is thin. Signal records the engine's flow events, so you see the steps that actually ran, with timings.
 
 **You review the decision.** You see the recommended bet, a confidence level, the signals behind it, the strongest counterargument, an open question to settle before building, and a reversible experiment. **Proof mode** lets you open the source passage behind every claim.
 
@@ -92,17 +92,18 @@ flowchart LR
 
 | | |
 | --- | --- |
-| 🧭 **Parallel specialist scoping** | Customer Advocate, Skeptic, and Product Strategist analyze the same evidence concurrently. |
-| 🔎 **Proof mode** | Each claim carries its source, role, and support/challenge status, and is checked against the source text (verbatim, paraphrase, or not found). Click one to read the original passage. |
+| 🧭 **Specialist scoping** | Customer Advocate, Skeptic, and Product Strategist each analyze the same evidence. |
+| 🔎 **Proof mode** | Each claim carries its source, role, and support/challenge status, and is checked against the parsed source text. A quote that can't be found is flagged as unverified, never shown as supported. Click one to read the original passage. |
 | ⚖️ **Built-in dissent** | Every report includes the strongest contradiction and caps confidence when skeptical evidence exists. |
 | 🧪 **Reversible next step** | Instead of a roadmap, you get the smallest experiment that would confirm or kill the idea. |
-| 📒 **Promise ledger** | Each specialist's commitments, and whether the returned evidence shows they were kept. |
-| 🕸️ **Semantic spacetime map** | Explicit `supports` and `challenges` links between evidence, roles, and the decision. |
-| ⏱️ **Engine trace and timeline** | The steps RocketRide actually executed, with per-step timings, recorded from the engine's flow events. |
-| 📎 **Rich evidence** | Attach TXT, Markdown, JSON, JSONL, CSV, or XLSX. Spreadsheets are parsed into rows the workflow can cite. |
+| 📒 **Promise ledger** | Each specialist's commitment, graded kept, qualified, or broken by an independent Promise Judge. Signal reads the judge's verdicts from its own RocketRide output, so the synthesizer can't overwrite them. |
+| 🕸️ **Semantic spacetime map** | Only declared `supports` and `challenges` links from evidence, through each role's finding, to the decision. Nothing is inferred from position or role names. |
+| ⏱️ **Live graph, trace, and timeline** | The steps RocketRide actually executed, shown live during the run and afterwards with per-step timings, all from the engine's flow events. |
+| 🗂️ **One workflow, many decisions** | **Decisions** lists completed live runs side by side, each with its own bet, contradiction, and next experiment. |
+| 📎 **Rich evidence** | Attach TXT, Markdown, JSON, JSONL, CSV, or XLSX. RocketRide's parse node reads each file, and its parsed tables appear under **Parsed by RocketRide**. |
 | 🏷️ **Honest provenance** | Seed, staged, imported, and live results are labeled differently. Signal never swaps in demo output when a live run fails. |
 | 🌿 **Isolated builds** | The coding agent works in a temporary Git worktree on its own branch, never your working copy. |
-| ✅ **Line-cited delivery review** | A second RocketRide workflow reviews the patch and test results, citing `path:line` locations that Signal verifies against the diff. |
+| ✅ **Agent-read delivery review** | A RocketRide agent reads the committed diff with read-only `tool_git`, then three reviewers cite `path:line` locations that Signal verifies against the commit. |
 | 🔐 **Credentials stay put** | **Connections** checks Claude Code and Codex sign-in status. Tokens stay in each CLI's own store. |
 
 ## Run it live with RocketRide
@@ -112,7 +113,7 @@ A live run needs a **RocketRide engine** and an [OpenRouter](https://openrouter.
 ```bash
 cp .env.example .env          # 1. add ROCKETRIDE_OPENROUTER_KEY to .env
 npm run rocketride:up         # 2. start the RocketRide engine on 127.0.0.1:5565
-npm run rocketride:check      # 3. verify the engine and both pipelines
+npm run rocketride:check      # 3. verify the engine and all three pipelines
 npm run dev                   # 4. start Signal, then click "Run scope workflow"
 ```
 
@@ -128,7 +129,7 @@ ROCKETRIDE_APIKEY=your-engine-key
 ROCKETRIDE_OPENROUTER_KEY=your-openrouter-key
 ```
 
-Both pipelines call models through OpenRouter's OpenAI-compatible endpoint, so `ROCKETRIDE_OPENROUTER_KEY` must be available to the **RocketRide engine process**. `npm run rocketride:up` passes it from `.env` into the container. `npm run rocketride:check` prints `RocketRide health: PASS` only when the connection, ping, and both pipeline validations succeed.
+The pipelines call models through OpenRouter's OpenAI-compatible endpoint, so `ROCKETRIDE_OPENROUTER_KEY` must be available to the **RocketRide engine process**. `npm run rocketride:up` passes it from `.env` into the container. `npm run rocketride:check` prints `RocketRide health: PASS` only when the connection, ping, and every pipeline validation succeed.
 
 </details>
 
@@ -145,9 +146,9 @@ Refresh Signal and click **Open latest live run**, or use **Open completed repor
 
 </details>
 
-### The two workflows
+### The workflows
 
-Both pipelines use the same shape: parse the input, fan out to three concurrent LLM roles, reconcile, then enforce a JSON contract with RocketRide's `extract_data` node, which retries malformed output. Signal records the engine's flow events for both, so the trace you see is the one that ran.
+[`evidence-parse.pipe`](pipelines/evidence-parse.pipe) runs RocketRide's `parse` node on each uploaded file's raw bytes and returns its text and tables. The two decision workflows then share a shape: three LLM roles, a reconciliation step, and a JSON contract enforced by RocketRide's `extract_data` node, which retries malformed output. Signal records the engine's flow events for all of them, so the trace you see is the one that ran.
 
 <table>
 <tr>
@@ -173,7 +174,10 @@ evidence → parse
 <td>
 
 ```text
-mission + numbered patch + test output
+mission + commit range + test output
+              │
+  diff reader agent ── tool_git (read-only)
+              │        git.diff(base..head)
   ├─ Change Reviewer ─────┐
   ├─ Quality Gatekeeper ──┼─ reconciliation
   └─ Release Skeptic ─────┘       │
@@ -186,7 +190,7 @@ mission + numbered patch + test output
 </tr>
 <tr>
 <td>Recommendation, confidence, sources, signals, proof claims, contradiction, experiment, promise assessments, and relationship map.</td>
-<td>A verdict on readiness for <b>human pull-request review</b>, with findings that cite <code>path:line</code> locations Signal checks against the patch. It never approves a merge, release, or deployment.</td>
+<td>A verdict on readiness for <b>human pull-request review</b>, with the agent's real <code>git.diff</code> call, and findings that cite <code>path:line</code> locations Signal checks against the commit. It never approves a merge, release, or deployment.</td>
 </tr>
 </table>
 
@@ -207,21 +211,25 @@ SIGNAL_EXECUTION_PR_MODE=github      # or local: push a review branch, no PR
 
 SIGNAL_DELIVERY_REVIEW_ENABLED=1     # run the RocketRide delivery review
 SIGNAL_DELIVERY_REVIEW_REQUIRED=0    # set to 1 to block the PR if the review fails
+
+SIGNAL_AGENT_BUDGET_USD=2            # Claude Code spending cap per run
+SIGNAL_EXECUTION_SETUP=              # override the dependency install ("none" to skip)
 ```
 
 When you click **Run implementation**, the runner:
 
 1. fetches the configured base branch and creates a temporary worktree on a new `signal/<run-id>` branch,
-2. runs the coding agent with the approved mission:
+2. installs dependencies from the committed lockfile (`npm ci`, pnpm, yarn, or bun),
+3. runs the coding agent with the approved mission:
    - **Claude Code** (default) runs headless with edits auto-accepted inside the worktree and shell access limited to `npm test`, `npm run build`, and read-only git,
    - **Codex CLI** runs with workspace-write access to the worktree,
-3. runs `npm test` and `npm run build` if the repository defines them,
-4. records the changed files, the actual patch, and the command output,
-5. optionally sends that bundle to the RocketRide delivery review,
-6. commits and pushes the branch, then opens a pull request with **GitHub CLI** with the review in the PR body (in `local` mode it stops at the pushed review branch),
-7. removes the temporary worktree.
+4. runs the repository's `test` and `build` scripts if it defines them,
+5. commits the change locally,
+6. optionally runs the RocketRide delivery review, whose agent reads that commit with read-only git tools,
+7. pushes the reviewed commit only after the review, then opens a pull request with **GitHub CLI** with the review in the PR body (in `local` mode it stops at the pushed review branch),
+8. removes the temporary worktree.
 
-You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mode. Follow progress under **Builds**. Each run is saved under `data/runs/`, and a run interrupted by a server restart is marked as failed rather than left hanging.
+You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mode. Follow progress under **Builds**. Each run is saved under `data/runs/` with its own folder of inputs, logs, patch, and review. A failed run keeps its work on an unpushed local branch, and a run interrupted by a server restart is marked `interrupted` and its processes are stopped. Only one scope run and one build per repository run at a time; a second click attaches to the active run, and **Cancel** stops it.
 
 > [!TIP]
 > To try the full build loop without touching a real repository, run `npm run demo:target`. It creates a small demo app with a local bare Git remote under `.context/` and prints the `SIGNAL_EXECUTION_*` values to use. Set `SIGNAL_EXECUTION_PR_MODE=local`, since a local remote can't host a pull request.
@@ -230,9 +238,12 @@ You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mod
 
 ```text
 Browser UI (index.html, src/)              Node server (scripts/serve.mjs, 127.0.0.1 only)
- ├─ work order + staged evidence    ──►     ├─ POST /api/analyze          → evidence ingestion → rocketride-run.mjs → RocketRide
+ ├─ work order + staged evidence    ──►     ├─ POST /api/analyze          → 202 + run id; run-manager → evidence-parse.pipe → signal-room.pipe
+ ├─ live scope graph                        ├─ GET  /api/health           → live engine, pipeline, runner, and repo checks
+ ├─ decisions (completed live runs)         ├─ GET  /api/decisions        → completed live scope runs
  ├─ decision · proof · ledger · map         ├─ POST /api/execute          → signal-execute.mjs → Claude Code / Codex · git · gh
- ├─ engine trace + timeline                 ├─ GET  /api/runs/:id         → saved run records (data/runs/)
+ ├─ engine trace + timeline                 ├─ GET  /api/runs/:id         → run record: status, progress, report, errors
+                                            ├─ POST /api/runs/:id/cancel  → stop a run and its process tree
  └─ build mission + build status    ◄──     ├─ GET  /api/executions/:id   → live build progress
                                             ├─ GET  /api/execution-status
                                             ├─ GET  /api/runners
@@ -275,13 +286,15 @@ Signal treats each specialist as an agent that can only promise its own behavior
 | `npm run eval` | Check the evidence, proof, and confidence invariants |
 | `npm run build` | Build the static app into `dist/` |
 | `npm run rocketride:up` | Start a local RocketRide engine with Docker (`:down` stops it, `:logs` follows it) |
-| `npm run rocketride:check` | Verify engine connectivity and validate both pipelines |
+| `npm run rocketride:check` | Verify engine connectivity and validate all three pipelines |
 | `npm run analyze:live` | Run the scope workflow on an evidence file |
 | `npm run delivery-review:live` | Run the delivery review on a delivery bundle |
 | `npm run seed:scenario -- --list` | List the deterministic demo scenarios |
 | `npm run sources:demo` | Generate a realistic multi-format source pack |
 | `npm run demo:target` | Create an isolated demo repository and local remote for trying builds |
 | `npm run demo:record` | Record an end-to-end walkthrough video (macOS + Chrome) |
+| `npm run verify:e2e` | Drive the real UI end to end in headless Chrome against a running server and engine (`-- --skip-build` stops after the scope run) |
+| `npm run runs:prune` | Delete run records, artifacts, and kept branches beyond the newest `SIGNAL_RUNS_KEEP` (default 30) |
 
 ### Trust checks
 
@@ -337,11 +350,12 @@ TXT, Markdown, JSON, JSONL, CSV, and XLSX. Each spreadsheet sheet is converted t
 
 ## Safety and current limits
 
-- **Localhost only.** The server binds to `127.0.0.1`. Don't expose it to an untrusted network, especially with execution enabled.
+- **Localhost only.** The server binds to `127.0.0.1`, rejects requests whose `Host` isn't its own (DNS rebinding), and serves only the app and public demo data, never `.env`, `.git`, or run records. Don't expose it to an untrusted network, especially with execution enabled.
 - **One trusted repository.** Execution is off by default and scoped to the single repository you configure. Passing tests don't replace code review.
 - **Advisory review.** The delivery review informs the human reviewer. It never approves a release.
-- **Local artifacts.** Live outputs such as `data/live-report.json`, run records in `data/runs/`, and rendered recordings are gitignored.
-- **Engine runs separately.** Start it with Docker (`npm run rocketride:up`) or point Signal at your own RocketRide server or Cloud endpoint.
+- **Local artifacts.** Live outputs such as `data/live-report.json`, run records and per-run folders in `data/runs/`, and rendered recordings are gitignored.
+- **Bounded coding runs.** Each stage has a time limit (`SIGNAL_TIMEOUT_*`), Claude Code runs with a spending cap (`SIGNAL_AGENT_BUDGET_USD`, default $2) and without your user-level MCP servers, hooks, or plugins, and Cancel stops a run's whole process tree.
+- **Engine runs separately.** Start it with Docker (`npm run rocketride:up`) or point Signal at your own RocketRide server or Cloud endpoint. The published image is amd64-only, so on Apple Silicon prefer the native RocketRide server; `rocketride:check` warns when the Docker engine runs under emulation.
 
 ## Contributing
 

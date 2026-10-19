@@ -1,6 +1,7 @@
 import { normalizeReport } from './report.js';
 import { scenarioLibrary, getScenario } from './scenarios.js';
 import { verifyReportProofs } from './proof-verification.js';
+import { roleFor } from './promise-judge.js';
 
 const $ = selector => document.querySelector(selector);
 let selectedScenario = scenarioLibrary[0];
@@ -199,7 +200,7 @@ function createBuildMission(event) {
 }
 
 const executionPhaseOrder = ['preflight', 'implementing', 'testing', 'delivery-review', 'opening-pr'];
-const executionPhaseIndex = { 'delivery-review-failed': 3, 'review-ready': 4, complete: 5 };
+const executionPhaseIndex = { setup: 0, 'delivery-review-failed': 3, 'review-ready': 4, complete: 5 };
 
 function setExecutionState(execution) {
   const status = execution?.status || 'disabled';
@@ -215,23 +216,27 @@ function setExecutionState(execution) {
     'opening-pr': 'Opening pull request',
     complete: 'Ready for human review',
     failed: 'Execution failed',
+    cancelled: 'Implementation run cancelled',
+    interrupted: 'The Signal server stopped before this run finished',
+    setup: 'Installing dependencies',
     disabled: 'Execution is disabled until a trusted repository is configured.'
   };
   // The furthest phase this run reached, so a failure keeps completed stages visible.
   const reached = Math.max(-1, ...(execution?.logs || []).map(event => executionPhaseIndex[event.phase] ?? executionPhaseOrder.indexOf(event.phase)));
-  const current = status === 'failed' ? reached : executionPhaseIndex[status] ?? executionPhaseOrder.indexOf(status);
+  const stopped = ['failed', 'cancelled', 'interrupted'].includes(status);
+  const current = stopped ? reached : executionPhaseIndex[status] ?? executionPhaseOrder.indexOf(status);
   $('#executionState').textContent = execution?.detail || phaseCopy[status] || status;
   $('#executionPr').textContent = execution?.prUrl
     ? 'Ready for review'
     : execution?.reviewBranch || (status === 'opening-pr' ? 'Creating' : 'Not created');
-  $('#executionTests').textContent = current > 2 ? 'Passed' : status === 'failed' && reached === 2 ? 'Failed' : 'Tests + build';
+  $('#executionTests').textContent = current > 2 ? 'Passed' : stopped && reached === 2 ? 'Failed' : 'Tests + build';
   document.querySelectorAll('.mission-stages li').forEach((stage, index) => {
     stage.classList.toggle('prepared', index === 0 || (index === 1 && current >= 1) || (index === 2 && current > 2) || (index === 3 && status === 'complete'));
   });
   document.querySelectorAll('[data-execution-phase]').forEach((item, index) => {
     item.classList.toggle('complete', status === 'complete' || index < current);
-    item.classList.toggle('active', index === current && !['complete', 'failed'].includes(status));
-    item.classList.toggle('failed', status === 'failed' && index === current);
+    item.classList.toggle('active', index === current && status !== 'complete' && !stopped);
+    item.classList.toggle('failed', stopped && index === current);
   });
   renderDeliveryReview(execution?.deliveryReview);
 }
@@ -256,12 +261,23 @@ function renderDeliveryReview(review) {
     ...(review.risks || []).map(risk => ({ ...risk, status: risk.severity, statusLabel: `${risk.severity} risk` }))
   ];
   const steps = review.provenance?.trace || [];
+  const agent = review.agent;
+  const diffCall = agent?.calls?.find(call => call.tool === 'diff');
+  const agentBox = agent && diffCall ? `
+    <div class="agent-call">
+      <span>agent_rocketride → read-only tool_git</span>
+      <code>git.diff(${escapeHtml(String(diffCall.refA || '').slice(0, 7))}..${escapeHtml(String(diffCall.refB || '').slice(0, 7))})</code>
+      <small>commit ${escapeHtml(agent.commit.short)}${agent.commit.subject ? ` · "${escapeHtml(agent.commit.subject)}"` : ''}</small>
+      <b>→ files changed: ${escapeHtml(diffCall.filesChanged)} · +${escapeHtml(diffCall.insertions)} · −${escapeHtml(diffCall.deletions)}</b>
+      <em class="${agent.matchesCommit ? 'verified' : 'unverified'}">${agent.matchesCommit ? 'Matches the commit Signal recorded' : `Does not match the recorded commit (${escapeHtml(agent.commitStats.filesChanged)} files · +${escapeHtml(agent.commitStats.insertions)} · −${escapeHtml(agent.commitStats.deletions)})`}</em>
+    </div>` : '';
   panel.innerHTML = `
     <div class="delivery-review-head">
       <div>
         <span class="eyebrow">delivery-review.pipe · live run</span>
-        <h3>RocketRide read the actual diff</h3>
+        <h3>An agent read the real diff</h3>
         <p>${escapeHtml(review.summary || '')}</p>
+        ${agentBox}
       </div>
       <div class="delivery-verdict ${escapeHtml(review.verdict)}">
         <span>Verdict</span>
@@ -319,23 +335,44 @@ async function prepareExecutionStatus() {
   }
 }
 
+let activeExecutionId;
+
+function failureCopy(execution) {
+  const failure = execution.failure;
+  if (!failure) return execution.detail;
+  const kept = failure.localBranch ? ` Work kept on local branch ${failure.localBranch} (not pushed).` : '';
+  const where = failure.artifacts ? ` Logs and patch: ${failure.artifacts.replace(/^.*\/(data\/runs\/)/, '$1')}/` : '';
+  return `${describeRunError(failure)}${kept}${where}`;
+}
+
 async function pollExecution(id) {
   clearInterval(executionPoll);
+  activeExecutionId = id;
+  $('#cancelExecutionButton').hidden = false;
+  let misses = 0;
+  const finish = () => {
+    clearInterval(executionPoll);
+    activeExecutionId = undefined;
+    $('#cancelExecutionButton').hidden = true;
+    $('#dispatchExecutionButton').disabled = false;
+  };
   const poll = async () => {
     try {
       const response = await fetch(`/api/executions/${id}`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Could not read execution status.');
+      misses = 0;
       setExecutionState(payload.execution);
-      if (['complete', 'failed'].includes(payload.execution.status)) {
-        clearInterval(executionPoll);
-        $('#dispatchExecutionButton').disabled = false;
+      if (terminalRunStatuses.has(payload.execution.status)) {
+        finish();
         if (payload.execution.prUrl) $('#executionState').innerHTML = `Pull request ready: <a href="${escapeHtml(payload.execution.prUrl)}" target="_blank" rel="noreferrer">open review</a>`;
+        else if (payload.execution.status !== 'complete') $('#executionState').textContent = failureCopy(payload.execution);
       }
     } catch (error) {
-      clearInterval(executionPoll);
-      $('#executionState').textContent = error.message;
-      $('#dispatchExecutionButton').disabled = false;
+      misses += 1;
+      if (misses < 5) return;
+      finish();
+      $('#executionState').textContent = describeRunError({ code: 'server-unreachable' });
     }
   };
   await poll();
@@ -357,11 +394,16 @@ async function dispatchExecution() {
       body: JSON.stringify({ mission: currentMission })
     });
     const payload = await response.json();
-    if (!response.ok || !payload.ok) throw new Error(payload.message || payload.message || 'Could not start implementation.');
+    if (response.status === 409 && payload.code === 'run-active') {
+      showToast(payload.message, 6000);
+      pollExecution(payload.activeRunId);
+      return;
+    }
+    if (!response.ok || !payload.ok) throw Object.assign(new Error(payload.message || 'Could not start implementation.'), { code: payload.code });
     showToast('Implementation run started. Signal will report test and pull-request status here.', 6000);
     pollExecution(payload.execution.id);
   } catch (error) {
-    $('#executionState').textContent = error.message;
+    $('#executionState').textContent = describeRunError({ code: error.code, message: error.message });
     button.disabled = false;
   }
 }
@@ -545,12 +587,18 @@ function renderPipeline(pipeline, state = 'done') {
   `).join('');
 }
 
-function renderPromises(promises) {
+const promiseGraderCopy = {
+  applied: 'Graded by the independent Promise Judge (GPT-4o). Signal read these verdicts from the judge\'s own RocketRide output, not from the synthesizer.',
+  unavailable: 'The Promise Judge output could not be read for this run, so these grades are the synthesizer\'s restatement.',
+  'not-recorded': 'This report predates judge capture; these grades are the synthesizer\'s restatement.'
+};
+
+function renderPromises(promises, judge = {}) {
   $('#promiseLedger').innerHTML = promises.map(promise => `
     <article class="promise-row assessed">
       <div class="promise-agent"><i>${escapeHtml(promise.initials)}</i><div><strong>${escapeHtml(promise.agent)}</strong><span>promiser</span></div></div>
       <span class="promise-arrow">→</span>
-      <div class="promise-body"><strong>${escapeHtml(promise.body)}</strong><small>to ${escapeHtml(promise.to)} · ${escapeHtml(promise.evidence)}</small></div>
+      <div class="promise-body"><strong>${escapeHtml(promise.body)}</strong><small>to ${escapeHtml(promise.to)} · ${escapeHtml(promise.evidence)}</small>${promise.reason ? `<small class="promise-reason">Judge: ${escapeHtml(promise.reason)}</small>` : ''}</div>
       <span class="assessment ${escapeHtml(promise.assessment)}">${escapeHtml(promise.assessment)}</span>
     </article>
   `).join('') || '<div class="promise-row"><div class="promise-body"><strong>No promise ledger was included in this report.</strong></div></div>';
@@ -558,6 +606,8 @@ function renderPromises(promises) {
   $('#promiseKept').textContent = kept;
   $('.promise-score span').textContent = `/ ${promises.length} kept`;
   $('.view-tabs [data-view="promiseView"] span').textContent = String(promises.length).padStart(2, '0');
+  const disagreements = (judge.disagreements || []).map(item => `${item.agent}: synthesizer said ${item.synthesizer}, judge said ${item.judge}`);
+  $('#promiseGrader').textContent = [promiseGraderCopy[judge.status] || promiseGraderCopy['not-recorded'], disagreements.length ? `Overruled synthesizer: ${disagreements.join('; ')}.` : ''].filter(Boolean).join(' ');
 }
 
 function findProofSource(proof) {
@@ -566,12 +616,23 @@ function findProofSource(proof) {
     || currentReport.sources.find(source => source.name.toLowerCase().includes(String(proof.sourceName || '').toLowerCase()));
 }
 
+// Only a quote found in the parsed source (or a labelled, grounded paraphrase)
+// may carry the role's supported/challenged status; anything else is flagged.
+const proofVerificationCopy = {
+  'not-found': 'quote not found in the parsed source',
+  'source-unavailable': 'source text unavailable'
+};
+
+function quoteVerified(proof) {
+  return ['verbatim', 'paraphrase'].includes(proof?.verification?.status);
+}
+
 function renderProofs(proofs = []) {
   $('#proofCount').textContent = `${String(proofs.length).padStart(2, '0')} claims`;
   $('#proofList').innerHTML = proofs.length
     ? proofs.map((proof, index) => `
-      <button class="proof-item ${escapeHtml(proof.status)}" type="button" data-proof-index="${index}">
-        <span>${escapeHtml(proof.status)} · ${escapeHtml(proof.verification?.status || 'unchecked')}</span>
+      <button class="proof-item ${quoteVerified(proof) ? escapeHtml(proof.status) : 'unverified'}" type="button" data-proof-index="${index}">
+        <span>${quoteVerified(proof) ? `${escapeHtml(proof.status)} · ${escapeHtml(proof.verification.status)}` : `unverified · ${escapeHtml(proofVerificationCopy[proof.verification?.status] || 'quote not checked')}`}</span>
         <strong>${escapeHtml(proof.claim)}</strong>
         <small>${escapeHtml(proof.agent)} · ${escapeHtml(proof.sourceName || proof.sourceId || 'source')}</small>
         <q>${escapeHtml(proof.quote)}</q>
@@ -639,51 +700,34 @@ function renderEngineTrace(report) {
   $('#engineTimeline').hidden = false;
 }
 
-function parseCsvRows(text) {
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"' && text[index + 1] === '"') { cell += '"'; index += 1; }
-      else if (char === '"') quoted = false;
-      else cell += char;
-    } else if (char === '"') quoted = true;
-    else if (char === ',') { row.push(cell); cell = ''; }
-    else if (char === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
-    else if (char !== '\r') cell += char;
-  }
-  row.push(cell);
-  rows.push(row);
-  return rows.filter(cells => cells.some(value => value.trim()));
+function parseMarkdownTable(markdown) {
+  return String(markdown).split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('|') && !/^\|[\s:|-]+\|$/.test(line))
+    .map(line => line.replace(/^\||\|$/g, '').split('|').map(cell => cell.trim()));
 }
 
-// Spreadsheets are read into rows by Signal's evidence ingestion before the
-// run; this shows exactly the rows RocketRide's roles received.
+// Tables come from RocketRide's parse node (its `table` lane), recorded when
+// the run parsed each uploaded file from its raw bytes.
 function renderParsedSheets(report) {
-  const sheets = (report.sources || []).flatMap(source => String(source.content || '')
-    .split(/\n\n(?=SHEET: )/)
-    .filter(section => section.startsWith('SHEET: '))
-    .map(section => ({ source, section })));
+  const sheets = (report.parsedEvidence || []).flatMap(file => (file.tables || []).map(table => ({ file, rows: parseMarkdownTable(table) })))
+    .filter(sheet => sheet.rows.length > 1);
   const panel = $('#parsedEvidence');
   if (!sheets.length) {
     panel.hidden = true;
     panel.innerHTML = '';
     return;
   }
-  panel.innerHTML = sheets.map(({ source, section }) => {
-    const [titleLine, ...lines] = section.split('\n');
-    const [header = [], ...body] = parseCsvRows(lines.join('\n'));
+  panel.innerHTML = sheets.map(({ file, rows }) => {
+    const [header, ...body] = rows;
     const columns = header.slice(0, 7);
     return `
       <div class="parsed-sheet">
         <div class="pipeline-title">
-          <strong>Parsed spreadsheet evidence</strong>
-          <span>${escapeHtml(source.id)} · ${escapeHtml(titleLine.replace(/^SHEET:\s*/, ''))} · ${body.length} rows</span>
+          <strong>Parsed by RocketRide</strong>
+          <span>${escapeHtml(file.name)} · ${body.length} rows</span>
         </div>
-        <p>Signal read this workbook into rows before the run; RocketRide's specialist roles received exactly these rows.</p>
+        <p>RocketRide's parse node read this file from its raw bytes; the specialist roles cited exactly this text.</p>
         <div class="parsed-table-wrap">
           <table>
             <thead><tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr></thead>
@@ -695,12 +739,6 @@ function renderParsedSheets(report) {
   }).join('');
   panel.hidden = false;
 }
-
-const specialistRoles = [
-  { name: 'Customer Advocate', pattern: /customer|advocate/i },
-  { name: 'Skeptic', pattern: /skeptic|sceptic/i },
-  { name: 'Product Strategist', pattern: /strateg/i }
-];
 
 function wrapNodeLabel(text, maxChars, maxLines) {
   const lines = [];
@@ -720,35 +758,53 @@ function displayTraceLabel(value, fallback, maxWords = 3) {
   return words.slice(0, maxWords).join(' ') || fallback;
 }
 
+// Every edge drawn here was declared: either in the report's semantic map or by
+// a proof claim (source → the role that used it). Nothing is inferred from a
+// role's name, and roles or sources without a declared edge are not drawn.
 function buildDecisionTraceMap(report) {
-  const proofSources = [];
+  const sanitize = value => String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const sources = report.sources || [];
+  const sourceMatch = value => sources.find(source => [source.id, sanitize(source.id), source.name].includes(value));
+  const roleId = role => `agent_${role.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+  const canonical = node => {
+    if (!node) return null;
+    if (node.type === 'decision' || node.id === 'decision') return { id: 'decision' };
+    if (node.type === 'agent') {
+      const role = roleFor(node.label) || roleFor(node.id);
+      return role ? { id: roleId(role), role } : null;
+    }
+    const source = sourceMatch(node.id) || sourceMatch(node.label);
+    return source ? { id: `source_${source.id}`, source } : null;
+  };
+  const declaredNodes = new Map((report.semanticMap?.nodes || []).map(node => [node.id, canonical(node)]));
+  const allowed = (from, to) => (from.source && (to.role || to.id === 'decision')) || (from.role && to.id === 'decision');
+  const edges = [];
+  const roles = new Map();
+  const usedSources = new Map();
+  const addEdge = (from, to, kind, origin) => {
+    if (!from || !to || !allowed(from, to) || edges.some(edge => edge.from === from.id && edge.to === to.id)) return;
+    edges.push({ from: from.id, to: to.id, kind, origin });
+    [from, to].forEach(end => {
+      if (end.role) roles.set(end.id, end.role);
+      if (end.source) usedSources.set(end.id, end.source);
+    });
+  };
+  (report.semanticMap?.edges || []).forEach(edge => addEdge(declaredNodes.get(edge.from), declaredNodes.get(edge.to), edge.kind, 'semantic map'));
   (report.proofs || []).forEach(proof => {
     const source = findProofSource(proof);
-    if (source && !proofSources.some(item => item.id === source.id)) proofSources.push(source);
+    const role = roleFor(proof.agent);
+    addEdge(source && { id: `source_${source.id}`, source }, role ? { id: roleId(role), role } : { id: 'decision' }, ['challenged', 'blocked'].includes(proof.status) ? 'challenges' : 'supports', 'proof claim');
   });
-  const sources = (proofSources.length ? proofSources : report.sources || []).slice(0, 5);
-  // Finding nodes are the three specialist roles only; models sometimes put a
-  // quoted person in a proof's agent field, and that is not a finding.
-  const roleOf = name => specialistRoles.find(role => role.pattern.test(String(name || '')))?.name;
-  const agents = specialistRoles.map(role => role.name);
   const distribute = (items, x, start, end) => items.map((item, index) => ({ item, x, y: items.length === 1 ? (start + end) / 2 : start + ((end - start) * index) / (items.length - 1) }));
+  const sourceList = [...usedSources.entries()].slice(0, 6);
+  const roleList = [...roles.entries()];
   const nodes = [
-    ...distribute(sources, 105, 80, 400).map(({ item, x, y }) => ({ id: `source_${item.id}`, label: displayTraceLabel(item.name, 'Source', 2), title: item.name, sub: /\.[a-z0-9]+$/i.test(item.id) ? item.id.split('.').pop() : item.kind || 'evidence', type: 'source', x, y, radius: 34 })),
-    ...distribute(agents, 380, 130, 350).map(({ item, x, y }) => ({ id: `agent_${item.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, label: item, title: item, sub: 'finding', type: 'agent', x, y, radius: 38 })),
+    ...distribute(sourceList, 105, 80, 400).map(({ item: [id, source], x, y }) => ({ id, label: displayTraceLabel(source.name, 'Source', 2), title: source.name, sub: /\.[a-z0-9]+$/i.test(source.id) ? source.id.split('.').pop() : source.kind || 'evidence', type: 'source', x, y, radius: 34 })),
+    ...distribute(roleList, 380, 130, 350).map(({ item: [id, role], x, y }) => ({ id, label: role.name, title: role.name, sub: 'finding', type: 'agent', x, y, radius: 38 })),
     { id: 'decision', label: displayTraceLabel(report.recommendation?.title, 'Recommendation', 6), title: report.recommendation?.title, sub: 'recommendation', type: 'decision', x: 650, y: 240, radius: 52 }
   ];
-  const agentId = name => `agent_${String(name || 'Specialist').toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
-  const visibleSourceIds = new Set(sources.map(source => source.id));
-  const edges = (report.proofs || []).flatMap(proof => {
-    const source = findProofSource(proof);
-    if (!source || !visibleSourceIds.has(source.id)) return [];
-    const role = roleOf(proof.agent);
-    return [{ from: `source_${source.id}`, to: role ? agentId(role) : 'decision', kind: ['challenged', 'blocked'].includes(proof.status) ? 'challenges' : 'supports' }];
-  });
-  agents.forEach(name => {
-    edges.push({ from: agentId(name), to: 'decision', kind: /skeptic|challenge/i.test(name) ? 'challenges' : 'supports' });
-  });
-  return { nodes, edges };
+  const visible = new Set(nodes.map(node => node.id));
+  return { nodes, edges: edges.filter(edge => visible.has(edge.from) && visible.has(edge.to)) };
 }
 
 function renderSemanticMap(map) {
@@ -854,7 +910,7 @@ function renderReport(report) {
   renderSignals(report.signals);
   renderEngineTrace(report);
   renderParsedSheets(report);
-  renderPromises(report.promises || []);
+  renderPromises(report.promises || [], report.promiseJudge);
   renderProofs(report.proofs || []);
   renderExecutionTrace(report);
   renderSemanticMap(buildDecisionTraceMap(report));
@@ -904,6 +960,44 @@ function showReportTruth(report, origin) {
   }
 }
 
+// Completed live runs of the same scope workflow, read from the run store.
+async function prepareLiveDecisions() {
+  try {
+    const { decisions = [] } = await fetch('/api/decisions', { cache: 'no-store' }).then(response => response.json());
+    $('#liveDecisions').hidden = !decisions.length;
+    $('#liveDecisionCount').textContent = String(decisions.length);
+    $('#liveDecisionGrid').innerHTML = decisions.map(decision => `
+      <article class="live-decision">
+        <span class="eyebrow">Live run · ${escapeHtml(new Date(decision.completedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))} · ${decision.sources.length} source${decision.sources.length === 1 ? '' : 's'}</span>
+        <q>${escapeHtml(decision.brief)}</q>
+        <div class="live-decision-part"><span>Recommended bet</span><strong>${escapeHtml(decision.recommendation.title || '')}</strong></div>
+        <div class="live-decision-part"><span>Contradiction</span><p>${escapeHtml(decision.contradiction.title || '')}</p></div>
+        <div class="live-decision-part"><span>Next experiment</span><p>${escapeHtml(decision.experiment.title || '')}${decision.experiment.window ? ` · ${escapeHtml(decision.experiment.window)}` : ''}</p></div>
+        <button class="button button-ghost" type="button" data-open-decision="${escapeHtml(decision.id)}">Open decision</button>
+      </article>
+    `).join('');
+    document.querySelectorAll('[data-open-decision]').forEach(button => button.addEventListener('click', () => openLiveDecision(button.dataset.openDecision)));
+  } catch {
+    $('#liveDecisions').hidden = true;
+  }
+}
+
+async function openLiveDecision(runId) {
+  try {
+    const { run } = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' }).then(response => response.json());
+    const report = normalizeReport(run.report);
+    report.mode = 'live';
+    report.provenance = run.report.provenance;
+    renderReport(report);
+    showReportTruth(report, 'local');
+    scrollToReview();
+    await restoreMissionFromRun(report);
+    showToast('Opened a completed live RocketRide run. The browser did not call the model again.');
+  } catch {
+    showToast('That run could not be opened from the run store.');
+  }
+}
+
 async function prepareLocalLiveReport() {
   try {
     const response = await fetch(`./data/live-report.json?cache=${Date.now()}`, { cache: 'no-store' });
@@ -920,27 +1014,28 @@ async function prepareLocalLiveReport() {
   }
 }
 
+// Live engine health from the server, refreshed while the page is open.
+// Never shown during a scope run, which reports its own state.
 async function prepareRocketRideHealth() {
+  if (activeScopeRunId) return;
   const status = $('#engineStatus');
   try {
-    const response = await fetch(`./data/rocketride-health.json?cache=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return;
-    const health = await response.json();
-    const checked = new Date(health.checkedAt);
-    const ageMs = Date.now() - checked.getTime();
-    const fresh = Number.isFinite(ageMs) && ageMs < 5 * 60 * 1000;
-    status.className = `engine-status ${health.ok ? fresh ? 'healthy' : 'stale' : 'failed'}`;
-    status.querySelector('strong').textContent = health.ok
-      ? fresh ? 'RocketRide engine and pipeline verified' : 'RocketRide passed its last check'
-      : 'RocketRide health check failed';
-    status.querySelector('span').textContent = health.ok
-      ? `Authenticated ping ${health.latencyMs} ms · ${health.pipeline} · ${health.validation.errors} validation errors`
-      : health.message;
-    status.querySelector('code').textContent = health.ok
-      ? `${fresh ? 'checked' : 'last checked'} ${checked.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : 'attention needed';
+    const { engine, checkedAt } = await fetch('/api/health', { cache: 'no-store' }).then(response => response.json());
+    if (activeScopeRunId) return;
+    const pipelineCount = (engine.pipelines || []).length;
+    status.className = `engine-status ${engine.ok ? 'healthy' : 'failed'}`;
+    status.querySelector('strong').textContent = engine.ok ? 'RocketRide engine and pipelines verified' : engine.code === 'pipeline-invalid' ? 'A RocketRide pipeline failed validation' : 'RocketRide engine is not reachable';
+    status.querySelector('span').textContent = engine.ok
+      ? `Authenticated ping ${engine.latencyMs} ms · ${pipelineCount} pipelines valid · ${engine.uri}`
+      : `${describeRunError({ code: engine.code, message: engine.message })} ${engine.hint || ''}`.trim();
+    status.querySelector('code').textContent = engine.ok
+      ? `checked ${new Date(checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+      : engine.code;
   } catch {
-    // Absence means "not checked," never "healthy."
+    status.className = 'engine-status failed';
+    status.querySelector('strong').textContent = 'Signal server is not reachable';
+    status.querySelector('span').textContent = describeRunError({ code: 'server-unreachable' });
+    status.querySelector('code').textContent = 'server-unreachable';
   }
 }
 
@@ -1107,6 +1202,86 @@ async function analyzeSelectedScenario() {
   await replayAnalysis();
 }
 
+// Typed error codes from the server and the runners, mapped to the next step.
+const runErrorCopy = {
+  'engine-offline': 'RocketRide is not reachable. Start the engine, then run the workflow again.',
+  'pipeline-invalid': 'A RocketRide pipeline failed validation. Run npm run rocketride:check for details.',
+  'workflow-failed': 'The RocketRide workflow stopped before producing a report.',
+  'runner-signed-out': 'The coding agent is not signed in. Open Connections to sign in.',
+  'runner-missing': 'The coding agent CLI is not installed on this machine.',
+  'execution-disabled': 'Repository execution is disabled on this server.',
+  'stage-timeout': 'A stage ran past its time limit and was stopped.',
+  'agent-budget': 'The coding agent reached its spending cap (SIGNAL_AGENT_BUDGET_USD).',
+  'agent-failed': 'The coding agent stopped with an error.',
+  'no-changes': 'The coding agent finished without changing any files.',
+  'review-failed': 'The required RocketRide delivery review failed, so nothing was pushed.',
+  'command-failed': 'A repository command failed.',
+  cancelled: 'The run was cancelled.',
+  interrupted: 'The Signal server stopped before this run finished.',
+  'server-unreachable': 'Lost the connection to the local Signal server. Restart it with npm run dev.'
+};
+
+function describeRunError({ code, message } = {}) {
+  const copy = runErrorCopy[code];
+  if (!copy) return message || 'The run failed.';
+  return message && !['cancelled', 'interrupted'].includes(code) ? `${copy} ${message}` : copy;
+}
+
+const terminalRunStatuses = new Set(['complete', 'failed', 'cancelled', 'interrupted']);
+const liveFlowOrder = ['Parse evidence', 'Customer advocate', 'Skeptic', 'Product strategist', 'Promise judge', 'Decision synthesis', 'Enforce report contract'];
+let activeScopeRunId;
+
+// The run record lists the first flow event of each step; the step that
+// started last is the one the engine is working on.
+function renderLiveFlow(run) {
+  const started = new Set((run.progress?.steps || []).map(item => item.step));
+  const current = liveFlowOrder.filter(step => started.has(step)).at(-1);
+  const finished = run.status === 'complete';
+  const stopped = ['failed', 'cancelled', 'interrupted'].includes(run.status);
+  document.querySelectorAll('[data-flow-step]').forEach(node => {
+    const step = node.dataset.flowStep;
+    node.classList.toggle('done', finished || (started.has(step) && step !== current));
+    node.classList.toggle('active', !finished && step === current);
+  });
+  $('#liveFlow').classList.toggle('failed', stopped);
+  $('#cancelScopeButton').hidden = finished || stopped;
+  $('#liveFlowState').textContent = finished
+    ? 'Scope report ready for human review'
+    : stopped
+      ? `${run.status === 'cancelled' ? 'Cancelled' : 'Stopped'}${current ? ` during ${current.toLowerCase()}` : ''}`
+      : current ? `RocketRide is running: ${current.toLowerCase()}` : 'Waiting for the engine';
+}
+
+function startLiveFlow() {
+  const formats = [...new Set(stagedEvidenceFiles.map(file => String(file.name).split('.').pop().toUpperCase()))];
+  $('#liveFlowFormats').textContent = formats.length ? `+ ${formats.join(' · ')}` : 'text';
+  renderLiveFlow({ status: 'running', progress: { steps: [] } });
+  $('#liveFlow').hidden = false;
+}
+
+// Scope runs are owned by the server; the browser only watches the run record.
+async function watchRun(runId, onUpdate) {
+  let misses = 0;
+  for (;;) {
+    try {
+      const { run } = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' }).then(response => response.json());
+      misses = 0;
+      onUpdate(run);
+      if (terminalRunStatuses.has(run.status)) return run;
+    } catch {
+      misses += 1;
+      if (misses >= 5) throw Object.assign(new Error('The Signal server stopped answering.'), { code: 'server-unreachable' });
+    }
+    await new Promise(resolveWait => setTimeout(resolveWait, 800));
+  }
+}
+
+async function cancelRun(runId) {
+  if (!runId) return;
+  const payload = await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }).then(response => response.json()).catch(() => ({}));
+  showToast(payload.ok ? 'Cancelling: Signal is stopping the run and its processes.' : payload.message || 'That run is no longer running.');
+}
+
 async function runLiveAnalysis(event) {
   const brief = $('#factoryIdeaInput').value.trim();
   if (!brief) {
@@ -1123,10 +1298,11 @@ async function runLiveAnalysis(event) {
   setScopeRunNotice('RocketRide is reading the request and context. The scope report will open when it is ready.', 'running');
   $('#engineStatus').className = 'engine-status stale';
   $('#engineStatus strong').textContent = 'RocketRide live run in progress';
-  $('#engineStatus span').textContent = 'The browser is calling the local dev server, which calls the RocketRide runner.';
+  $('#engineStatus span').textContent = 'The Signal server is running the RocketRide workflow; this page is watching its progress.';
   $('#engineStatus code').textContent = 'running';
   setFactoryRoleState('running');
   renderPipeline(rocketRidePipeline, 'running');
+  startLiveFlow();
 
   try {
     const input = await buildRocketRideInput();
@@ -1136,21 +1312,26 @@ async function runLiveAnalysis(event) {
       body: JSON.stringify(input)
     });
     const payload = await response.json();
-    if (response.status === 409 && payload.code === 'scope-workflow-running') {
-      throw new Error(payload.message);
+    if (response.status === 409 && payload.code === 'run-active') {
+      // Another tab or click already started a scope run: watch that one.
+      activeScopeRunId = payload.activeRunId;
+      showToast(payload.message);
+    } else if (!response.ok || !payload.ok) {
+      throw Object.assign(new Error(payload.message || 'RocketRide run failed.'), { code: payload.code });
+    } else {
+      activeScopeRunId = payload.runId;
     }
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.stderr || payload.message || 'RocketRide run failed.');
-    }
-    const report = normalizeReport(payload.report);
-    report.mode = payload.report.mode === 'live' ? 'live' : 'imported';
-    report.provenance = payload.report.provenance;
-    currentRunId = payload.runId;
+    const run = await watchRun(activeScopeRunId, renderLiveFlow);
+    if (run.status !== 'complete') throw Object.assign(new Error(run.error?.message || ''), { code: run.error?.code || run.status });
+    const report = normalizeReport(run.report);
+    report.mode = run.report.mode === 'live' ? 'live' : 'imported';
+    report.provenance = run.report.provenance;
+    currentRunId = run.id;
     renderReport(report);
     currentMission = {
-      title: missionTitleFromRequest(brief),
-      brief,
-      runId: payload.runId
+      title: missionTitleFromRequest(run.brief || brief),
+      brief: run.brief || brief,
+      runId: run.id
     };
     scopeReportReady = report.mode === 'live';
     $('#loadLiveButton').hidden = true;
@@ -1163,23 +1344,22 @@ async function runLiveAnalysis(event) {
     setFactoryRoleState('complete');
     setProofMode(true);
     setScopeRunNotice('Scope report ready. Opening the decision for review.', 'complete');
+    void prepareLiveDecisions();
     showToast('RocketRide live run complete. Proof Mode is showing the claims tied to evidence.');
   } catch (error) {
-    const technicalMessage = error instanceof Error ? error.message : 'The RocketRide scope run failed.';
-    const message = /Failed to connect to ws:\/\/localhost:5565/i.test(technicalMessage)
-      ? 'RocketRide is offline on this Mac. Start the local engine, then run the workflow again.'
-      : error instanceof TypeError && /fetch|network|load failed/i.test(technicalMessage)
-        ? 'Lost the connection to the local Signal server. Restart it with npm run dev, then run the workflow again.'
-        : technicalMessage;
+    const code = error.code || (error instanceof TypeError ? 'server-unreachable' : undefined);
+    const message = describeRunError({ code, message: error.message });
     renderPipeline(currentReport.mode === 'live' ? rocketRidePipeline : currentReport.pipeline, 'done');
     $('#engineStatus').className = 'engine-status failed';
-    $('#engineStatus strong').textContent = 'RocketRide live run failed';
+    $('#engineStatus strong').textContent = code === 'cancelled' ? 'Scope run cancelled' : 'RocketRide live run failed';
     $('#engineStatus span').textContent = message;
-    $('#engineStatus code').textContent = 'failed';
+    $('#engineStatus code').textContent = code || 'failed';
     setFactoryRoleState('failed');
     setScopeRunNotice(`The scope run stopped: ${message}`, 'failed');
+    renderLiveFlow({ status: code === 'cancelled' ? 'cancelled' : 'failed', progress: { steps: [] } });
     showToast(message, 8000);
   } finally {
+    activeScopeRunId = undefined;
     button.disabled = false;
     button.innerHTML = previous;
   }
@@ -1276,9 +1456,13 @@ renderFactoryEmpty();
 syncScopeAction();
 setProofMode(true);
 prepareLocalLiveReport();
+prepareLiveDecisions();
 prepareRocketRideHealth();
+setInterval(prepareRocketRideHealth, 30_000);
 
 $('#factoryGenerateButton').addEventListener('click', runLiveAnalysis);
+$('#cancelScopeButton').addEventListener('click', () => cancelRun(activeScopeRunId));
+$('#cancelExecutionButton').addEventListener('click', () => cancelRun(activeExecutionId));
 $('#factoryIdeaInput').addEventListener('input', syncScopeAction);
 $('#scopeWithRocketRide').addEventListener('click', runLiveAnalysis);
 $('#createMissionReviewButton').addEventListener('click', createBuildMission);

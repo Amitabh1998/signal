@@ -20,6 +20,7 @@
       </a>
       <nav class="topbar-center" aria-label="Primary navigation">
         <a class="active" href="#startTitle">New work order</a>
+        <a href="#liveDecisions">Decisions</a>
         <a href="#reviewWorkspace">Builds</a>
       </nav>
       <div class="topbar-actions">
@@ -72,6 +73,26 @@
                 <button class="button button-ghost" id="factoryClearButton" type="button">Clear</button>
               </div>
               <p class="scope-run-notice" id="scopeRunNotice" aria-live="polite" hidden></p>
+              <section class="live-flow" id="liveFlow" aria-label="RocketRide scope workflow progress" hidden>
+                <div class="live-flow-head">
+                  <strong>RocketRide scope workflow</strong>
+                  <span class="live-badge">Live run</span>
+                  <span id="liveFlowState">Waiting for the engine</span>
+                  <button class="button button-ghost" id="cancelScopeButton" type="button" hidden>Cancel</button>
+                </div>
+                <div class="live-flow-graph">
+                  <div class="flow-col"><div class="flow-node done" data-flow-node="request"><b>Request</b><small id="liveFlowFormats">text</small></div></div>
+                  <div class="flow-col"><div class="flow-node" data-flow-step="Parse evidence"><b>Parse</b><small>any file format</small></div></div>
+                  <div class="flow-col flow-fan">
+                    <div class="flow-node" data-flow-step="Customer advocate"><b>Customer Advocate</b><small>specialist role</small></div>
+                    <div class="flow-node" data-flow-step="Skeptic"><b>Skeptic</b><small>specialist role</small></div>
+                    <div class="flow-node" data-flow-step="Product strategist"><b>Product Strategist</b><small>specialist role</small></div>
+                  </div>
+                  <div class="flow-col"><div class="flow-node" data-flow-step="Promise judge"><b>Promise judge</b><small>independent · gpt-4o</small></div></div>
+                  <div class="flow-col"><div class="flow-node" data-flow-step="Decision synthesis"><b>Synthesis</b><small>gpt-4o</small></div></div>
+                  <div class="flow-col"><div class="flow-node" data-flow-step="Enforce report contract"><b>Contract</b><small>extract_data</small></div></div>
+                </div>
+              </section>
               <p class="brief-footnote">RocketRide uses this request and the selected context to produce the scope decision.</p>
             </div>
             <aside class="delivery-line" aria-label="Software factory stages">
@@ -160,6 +181,7 @@
               </dl>
               <div class="execution-action">
                 <button class="button button-primary" id="dispatchExecutionButton" type="button" disabled><span>▶</span> Run implementation</button>
+                <button class="button button-ghost" id="cancelExecutionButton" type="button" hidden>Cancel run</button>
                 <span id="executionState">Execution is disabled until a trusted repository is configured.</span>
               </div>
               <ol class="execution-timeline" aria-label="Implementation run progress">
@@ -171,6 +193,15 @@
               </ol>
               <section class="delivery-review" id="deliveryReviewPanel" aria-label="RocketRide delivery review" hidden></section>
             </section>
+          </section>
+
+          <section class="live-decisions" id="liveDecisions" aria-labelledby="liveDecisionsTitle" hidden>
+            <div class="live-decisions-head">
+              <span class="eyebrow">Same RocketRide workflow · <b id="liveDecisionCount">0</b> live runs</span>
+              <h2 id="liveDecisionsTitle">One workflow, many decisions.</h2>
+              <p>Each card is a completed live run of signal-room.pipe from Signal's run store, with its own contradiction and next experiment grounded in its own sources.</p>
+            </div>
+            <div class="live-decision-grid" id="liveDecisionGrid"></div>
           </section>
 
           <section class="scenario-panel" aria-labelledby="scenarioTitle">
@@ -374,7 +405,7 @@
             <aside class="promise-summary panel">
               <span class="eyebrow">Ensemble assessment</span>
               <div class="promise-score"><strong id="promiseKept">5</strong><span>/ 5 kept</span></div>
-              <p>The collective recommendation is trusted only when the required promises compose without an unresolved conflict.</p>
+              <p id="promiseGrader">The collective recommendation is trusted only when the required promises compose without an unresolved conflict.</p>
               <div class="promise-legend">
                 <span><i class="kept"></i> kept</span>
                 <span><i class="qualified"></i> qualified</span>

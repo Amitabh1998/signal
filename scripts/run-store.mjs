@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-const storeDir = resolve('data/runs');
+const storeDir = resolve(process.env.SIGNAL_RUNS_DIR || 'data/runs');
 
 function safeId(value) {
   const id = String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
@@ -12,6 +12,13 @@ function safeId(value) {
 
 function filepath(id) {
   return join(storeDir, `${safeId(id)}.json`);
+}
+
+export const runStoreDir = storeDir;
+
+// Inputs, logs, patches, and reviews for one run live beside its record.
+export function runArtifactsDir(id) {
+  return join(storeDir, safeId(id));
 }
 
 async function persist(record) {
@@ -58,24 +65,55 @@ export async function appendRunEvent(id, event) {
   });
 }
 
-// Runs are driven by the server process that created them. After a restart,
-// any record still marked active can never finish, so close it honestly.
-export async function failInterruptedRuns() {
+// Completed live scope runs, newest first, one per distinct request.
+export async function listScopeDecisions(limit = 6) {
   let names;
-  try { names = await readdir(storeDir); } catch { return 0; }
-  let count = 0;
+  try { names = await readdir(storeDir); } catch { return []; }
+  const runs = [];
   for (const name of names.filter(entry => entry.endsWith('.json'))) {
     try {
       const run = JSON.parse(await readFile(join(storeDir, name), 'utf8'));
-      if (['complete', 'failed'].includes(run.status)) continue;
-      const error = 'The Signal server stopped before this run finished.';
-      await updateRun(run.id, {
-        status: 'failed',
-        error,
-        ...(run.execution ? { execution: { ...run.execution, status: 'failed', detail: error } } : {})
-      });
-      count += 1;
+      if (run.kind === 'scope' && run.status === 'complete' && run.report?.mode === 'live') runs.push(run);
     } catch { /* Skip unreadable records. */ }
   }
-  return count;
+  const seen = new Set();
+  return runs
+    .sort((a, b) => String(b.completedAt || b.createdAt).localeCompare(String(a.completedAt || a.createdAt)))
+    .filter(run => {
+      const key = String(run.brief || '').trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit)
+    .map(run => ({
+      id: run.id,
+      completedAt: run.completedAt,
+      brief: run.brief,
+      sources: (run.evidence || []).map(item => item.name),
+      reportId: run.report.reportId,
+      recommendation: { title: run.report.recommendation?.title, summary: run.report.recommendation?.summary, confidence: run.report.recommendation?.confidence },
+      contradiction: { title: run.report.contradiction?.title },
+      experiment: { title: run.report.experiment?.title, window: run.report.experiment?.window, metric: run.report.experiment?.metric },
+      engineDurationMs: run.report.provenance?.engineDurationMs || 0
+    }));
+}
+
+// Keeps the newest `keep` runs; deletes older records, their artifacts, and the
+// unpushed local branches failed implementation runs left for inspection.
+export async function pruneRuns({ keep = 30, deleteBranch = async () => {} } = {}) {
+  let names;
+  try { names = await readdir(storeDir); } catch { return []; }
+  const runs = [];
+  for (const name of names.filter(entry => entry.endsWith('.json'))) {
+    try { runs.push(JSON.parse(await readFile(join(storeDir, name), 'utf8'))); } catch { /* Skip unreadable records. */ }
+  }
+  const stale = runs.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(keep);
+  for (const run of stale) {
+    const branch = run.execution?.failure?.localBranch;
+    if (branch) await deleteBranch(branch).catch(() => {});
+    await rm(runArtifactsDir(run.id), { recursive: true, force: true });
+    await rm(filepath(run.id), { force: true });
+  }
+  return stale.map(run => run.id);
 }
