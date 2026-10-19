@@ -1,29 +1,16 @@
 import { createReadStream } from 'node:fs';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { spawn } from 'node:child_process';
 import { acceptUploads } from './evidence-ingestion.mjs';
-import { createRun, failInterruptedRuns, listScopeDecisions, readRun, updateRun } from './run-store.mjs';
-import { verifyReportProofs } from '../src/proof-verification.js';
+import { createHealth } from './health.mjs';
+import { createRunManager, RunError } from './run-manager.mjs';
+import { listScopeDecisions, readRun, runStoreDir } from './run-store.mjs';
 
 const root = new URL('../', import.meta.url).pathname;
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 const maxBodyBytes = 12_000_000;
-const executions = new Map();
-const executionWrites = new Map();
-let scopeWorkflowRunning = false;
-let scopeProgress = { status: 'idle', steps: [] };
-
-function persistExecution(execution) {
-  const previous = executionWrites.get(execution.id) || Promise.resolve();
-  const next = previous
-    .catch(() => {})
-    .then(() => updateRun(execution.id, { status: execution.status, execution }));
-  executionWrites.set(execution.id, next);
-  return next;
-}
 
 async function loadDotEnv(filepath) {
   try {
@@ -142,23 +129,34 @@ async function readBody(request) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function runAnalyzeApi(request, response) {
-  if (scopeWorkflowRunning) {
-    sendJson(response, 409, {
-      ok: false,
-      code: 'scope-workflow-running',
-      message: 'A RocketRide scope workflow is already running. Wait for that decision before starting another one.'
-    });
+// Only the app shell and public demo data are served. Never .env, .git,
+// .context, run records, or uploads.
+const publicPaths = [/^\/index\.html$/, /^\/src\/[\w./-]+$/, /^\/docs\/assets\/[\w./-]+$/, /^\/data\/(live-report\.json|sample-evidence\.txt)$/, /^\/data\/(scenarios|source-packs)\/[\w./-]+$/];
+const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+
+const health = createHealth({ root });
+const runs = createRunManager({
+  root,
+  onScopeComplete: report => writeFile(join(root, 'data/live-report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
+});
+
+function sendError(response, error) {
+  if (error instanceof RunError) {
+    sendJson(response, error.status, { ok: false, code: error.code, message: error.message, ...error.extra });
     return;
   }
+  sendJson(response, 400, { ok: false, code: 'bad-request', message: error instanceof Error ? error.message : String(error) });
+}
 
-  scopeWorkflowRunning = true;
-  scopeProgress = { status: 'running', startedAt: Date.now(), steps: [] };
-  let runRecord;
-  let runDir;
+// Preflight: a run that cannot finish fails before it starts, with a typed code.
+async function requireEngine() {
+  const engine = await health.engine({ fresh: true, timeoutMs: 10_000 });
+  if (!engine.ok) throw new RunError(503, engine.code, engine.message || 'A RocketRide pipeline failed validation.', { hint: engine.hint, pipelines: engine.pipelines });
+}
+
+async function analyze(request, response, url) {
   try {
-    const raw = await readBody(request);
-    const parsed = raw.trim() ? JSON.parse(raw) : {};
+    const parsed = JSON.parse((await readBody(request)) || '{}');
     const brief = String(parsed.brief || '').trim();
     let uploads = acceptUploads(Array.isArray(parsed.files) ? parsed.files : []);
     // Without attachments, pasted evidence (or the bundled sample) is one text file.
@@ -166,94 +164,25 @@ async function runAnalyzeApi(request, response) {
       const text = String(parsed.evidence || '').trim() || await readFile(join(root, 'data/sample-evidence.txt'), 'utf8');
       uploads = acceptUploads([{ name: parsed.evidence ? 'pasted-evidence.txt' : 'sample-evidence.txt', dataBase64: Buffer.from(text).toString('base64') }]);
     }
-    runRecord = await createRun({
-      kind: 'scope',
-      status: 'running',
-      brief,
-      evidence: uploads.map(({ id, name, kind, mimeType, size, sha256 }) => ({ id, name, kind, mimeType, size, sha256 })),
-      provenance: { mode: 'live', runner: 'rocketride' }
-    });
-    runDir = await mkdtemp(join(tmpdir(), 'signal-room-'));
-    const manifestPath = join(runDir, 'files.json');
-    const briefPath = join(runDir, 'brief.txt');
-    const outputPath = join(runDir, 'live-report.json');
-    const manifest = [];
-    for (const [index, upload] of uploads.entries()) {
-      const path = join(runDir, `${index + 1}-${upload.name}`);
-      await writeFile(path, upload.buffer);
-      manifest.push({ name: upload.name, path, mimeType: upload.mimeType, kind: upload.kind, size: upload.size, sha256: upload.sha256 });
-    }
-    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-    await writeFile(briefPath, brief, 'utf8');
-
-    const child = spawn(process.execPath, [
-      join(root, 'scripts/rocketride-run.mjs'),
-      '--files', manifestPath,
-      '--brief', briefPath,
-      '--output', outputPath
-    ], { cwd: root, env: process.env });
-
-    let stdout = '';
-    let stderr = '';
-    let progressBuffer = '';
-    child.stdout.on('data', data => {
-      stdout += data;
-      progressBuffer += data;
-      const lines = progressBuffer.split('\n');
-      progressBuffer = lines.pop() || '';
-      for (const line of lines) {
-        try {
-          const event = JSON.parse(line);
-          if (event.type === 'signal-flow') scopeProgress.steps.push({ step: event.step, startedMs: event.at - scopeProgress.startedAt });
-        } catch { /* Plain log line. */ }
-      }
-    });
-    child.stderr.on('data', data => { stderr += data; });
-
-    const code = await new Promise(resolve => child.on('close', resolve));
-    if (code !== 0) {
-      scopeProgress.status = 'failed';
-      await updateRun(runRecord.id, { status: 'failed', error: stderr.trim() || stdout.trim() || 'RocketRide did not produce a report.' });
-      sendJson(response, 502, {
-        ok: false,
-        runId: runRecord.id,
-        message: 'RocketRide did not produce a live report.',
-        stdout: stdout.trim(),
-        stderr: stderr.trim()
-      });
+    await requireEngine();
+    const run = await runs.startScope({ brief, uploads });
+    // ?wait=1 keeps the old synchronous contract for scripts.
+    if (url.searchParams.get('wait') === '1') {
+      await runs.wait(run.id);
+      const finished = await readRun(run.id);
+      sendJson(response, finished.status === 'complete' ? 200 : 502, { ok: finished.status === 'complete', runId: run.id, report: finished.report, error: finished.error });
       return;
     }
-
-    const report = verifyReportProofs(JSON.parse(await readFile(outputPath, 'utf8')));
-    report.provenance = { ...(report.provenance || {}), runId: runRecord.id };
-    await updateRun(runRecord.id, {
-      status: 'complete',
-      completedAt: new Date().toISOString(),
-      parsedEvidence: report.parsedEvidence || [],
-      report,
-      provenance: report.provenance
-    });
-    await writeFile(join(root, 'data/live-report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-    scopeProgress.status = 'complete';
-    sendJson(response, 200, { ok: true, runId: runRecord.id, stdout: stdout.trim(), report });
+    sendJson(response, 202, { ok: true, runId: run.id });
   } catch (error) {
-    if (runRecord) await updateRun(runRecord.id, { status: 'failed', error: error instanceof Error ? error.message : String(error) }).catch(() => {});
-    sendJson(response, 400, {
-      ok: false,
-      runId: runRecord?.id,
-      message: error instanceof Error ? error.message : String(error)
-    });
-  } finally {
-    if (scopeProgress.status === 'running') scopeProgress.status = 'failed';
-    if (runDir) await rm(runDir, { recursive: true, force: true });
-    scopeWorkflowRunning = false;
+    sendError(response, error);
   }
 }
 
-async function startExecution(request, response) {
+async function execute(request, response) {
   const config = executionConfig();
   if (!config.enabled) {
-    sendJson(response, 409, { ok: false, ...config });
+    sendJson(response, 409, { ok: false, code: 'execution-disabled', ...config });
     return;
   }
   try {
@@ -262,78 +191,45 @@ async function startExecution(request, response) {
     const title = String(mission.title || 'Signal build mission').trim().slice(0, 120);
     const brief = String(mission.brief || '').trim().slice(0, 20_000);
     if (!brief) throw new Error('A mission brief is required before implementation can start.');
-    const runRecord = await createRun({ kind: 'implementation', status: 'queued', mission });
-    const id = runRecord.id;
-    const runDir = await mkdtemp(join(tmpdir(), 'signal-execution-'));
-    const inputPath = join(runDir, 'mission.json');
-    await writeFile(inputPath, JSON.stringify({ ...mission, title, brief }, null, 2));
-    const execution = { id, status: 'queued', detail: 'Preparing the trusted repository.', logs: [], prUrl: null };
-    executions.set(id, execution);
-    await persistExecution(execution);
-    const child = spawn(process.execPath, [
-      join(root, 'scripts/signal-execute.mjs'), '--input', inputPath, '--id', id
-    ], { cwd: root, env: process.env });
-    let buffer = '';
-    child.stdout.on('data', chunk => {
-      buffer += chunk.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      lines.forEach(line => {
-        try {
-          const event = JSON.parse(line);
-          if (event.type !== 'signal-execution') return;
-          execution.status = event.phase;
-          execution.detail = event.detail;
-          execution.logs.push(event);
-          if (event.deliveryReview) execution.deliveryReview = event.deliveryReview;
-          if (event.reviewBranch) execution.reviewBranch = event.reviewBranch;
-          if (event.phase === 'complete' && /^https:\/\//.test(event.detail)) execution.prUrl = event.detail;
-          void persistExecution(execution);
-        } catch { /* Ignore non-structured command output. */ }
-      });
-    });
-    child.stderr.on('data', chunk => {
-      execution.logs.push({ phase: 'stderr', detail: chunk.toString().slice(0, 2000) });
-      void persistExecution(execution);
-    });
-    child.on('close', code => {
-      if (code === 0) {
-        execution.status = 'complete';
-        const completed = execution.logs.findLast(event => event.phase === 'complete');
-        execution.detail = execution.prUrl || completed?.detail || 'The coding run completed.';
-      } else {
-        execution.status = 'failed';
-        const stderr = execution.logs.filter(event => event.phase === 'stderr').map(event => event.detail).join('');
-        const reason = stderr.split('\n').map(line => line.trim()).findLast(line => /^\w*Error:/.test(line));
-        execution.detail = reason
-          ? `The coding run stopped: ${reason.replace(/^\w*Error:\s*/, '').slice(0, 400)}`
-          : 'The coding run stopped before a pull request was opened.';
-      }
-      void persistExecution(execution);
-    });
+    const runner = await health.runner();
+    if (!runner.ok) throw new RunError(503, runner.code, `${config.runnerName} is not signed in on this machine.`, { hint: 'Open Connections and sign in, then retry.' });
+    if (config.deliveryReviewRequired) await requireEngine();
+    const { execution } = await runs.startImplementation({ ...mission, title, brief });
     sendJson(response, 202, { ok: true, execution });
   } catch (error) {
-    sendJson(response, 400, { ok: false, message: error instanceof Error ? error.message : String(error) });
+    sendError(response, error);
   }
 }
 
 const server = createServer(async (request, response) => {
-  const pathname = request.url?.split('?')[0];
-  const runMatch = pathname?.match(/^\/api\/runs\/([a-zA-Z0-9_-]+)$/);
+  // Reject DNS-rebinding requests: only this machine's own origin may talk to Signal.
+  if (!allowedHosts.has(String(request.headers.host || ''))) {
+    response.writeHead(421, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Misdirected request');
+    return;
+  }
+  const url = new URL(request.url || '/', `http://${request.headers.host}`);
+  const pathname = url.pathname;
+  const runMatch = pathname.match(/^\/api\/runs\/([a-zA-Z0-9_-]+)$/);
   if (request.method === 'GET' && runMatch) {
     try {
-      sendJson(response, 200, { ok: true, run: await readRun(runMatch[1]) });
+      sendJson(response, 200, { ok: true, run: await readRun(runMatch[1]), active: runs.isActive(runMatch[1]) });
     } catch (error) {
       sendJson(response, error?.code === 'ENOENT' ? 404 : 400, { ok: false, message: 'Run not found.' });
     }
     return;
   }
-  if (request.method === 'GET' && pathname === '/api/decisions') {
-    sendJson(response, 200, { ok: true, decisions: await listScopeDecisions() });
+  const cancelMatch = pathname.match(/^\/api\/runs\/([a-zA-Z0-9_-]+)\/cancel$/);
+  if (request.method === 'POST' && cancelMatch) {
+    try { sendJson(response, 202, { ok: true, ...(await runs.cancel(cancelMatch[1])) }); } catch (error) { sendError(response, error); }
     return;
   }
-  if (request.method === 'GET' && pathname === '/api/scope-progress') {
-    sendJson(response, 200, scopeProgress);
+  if (request.method === 'GET' && pathname === '/api/health') {
+    sendJson(response, 200, await health.snapshot());
+    return;
+  }
+  if (request.method === 'GET' && pathname === '/api/decisions') {
+    sendJson(response, 200, { ok: true, decisions: await listScopeDecisions() });
     return;
   }
   if (request.method === 'GET' && pathname === '/api/execution-status') {
@@ -344,7 +240,7 @@ const server = createServer(async (request, response) => {
     sendJson(response, 200, await runnerStatus());
     return;
   }
-  const runnerLoginMatch = pathname?.match(/^\/api\/runners\/(codex|claude)\/login$/);
+  const runnerLoginMatch = pathname.match(/^\/api\/runners\/(codex|claude)\/login$/);
   if (request.method === 'POST' && runnerLoginMatch) {
     try {
       const result = await startRunnerLogin(runnerLoginMatch[1]);
@@ -356,29 +252,34 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (request.method === 'POST' && pathname === '/api/execute') {
-    await startExecution(request, response);
+    await execute(request, response);
     return;
   }
-  const executionMatch = pathname?.match(/^\/api\/executions\/([a-zA-Z0-9_-]+)$/);
+  const executionMatch = pathname.match(/^\/api\/executions\/([a-zA-Z0-9_-]+)$/);
   if (request.method === 'GET' && executionMatch) {
-    let execution = executions.get(executionMatch[1]);
-    if (!execution) {
-      try { execution = (await readRun(executionMatch[1])).execution; } catch { /* handled below */ }
+    try {
+      const run = await readRun(executionMatch[1]);
+      if (!run.execution) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      sendJson(response, 200, { ok: true, execution: run.execution, status: run.status, active: runs.isActive(run.id) });
+    } catch {
+      sendJson(response, 404, { ok: false, message: 'Execution not found.' });
     }
-    if (!execution) sendJson(response, 404, { ok: false, message: 'Execution not found.' });
-    else sendJson(response, 200, { ok: true, execution });
     return;
   }
-  if (request.method === 'POST' && request.url?.split('?')[0] === '/api/analyze') {
-    await runAnalyzeApi(request, response);
+  if (request.method === 'POST' && pathname === '/api/analyze') {
+    await analyze(request, response, url);
     return;
   }
 
-  const path = normalize(decodeURIComponent(request.url?.split('?')[0] || '/')).replace(/^(\.\.[/\\])+/, '');
-  let file = join(root, path === '/' ? 'index.html' : path);
-  if (!file.startsWith(root)) file = join(root, 'index.html');
+  const path = normalize(decodeURIComponent(pathname === '/' ? '/index.html' : pathname));
+  if (request.method !== 'GET' || !publicPaths.some(pattern => pattern.test(path))) {
+    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    response.end('Not found');
+    return;
+  }
+  const file = join(root, path);
   try {
-    if ((await stat(file)).isDirectory()) file = join(file, 'index.html');
+    if (!(await stat(file)).isFile()) throw new Error('not a file');
     response.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
     createReadStream(file).pipe(response);
   } catch {
@@ -387,6 +288,14 @@ const server = createServer(async (request, response) => {
   }
 });
 
-const interrupted = await failInterruptedRuns();
-if (interrupted) console.log(`Marked ${interrupted} interrupted run(s) as failed.`);
+const interrupted = await runs.recover(runStoreDir);
+if (interrupted) console.log(`Marked ${interrupted} interrupted run(s); their processes were stopped.`);
+// Stop every run's process tree on shutdown instead of leaving orphans.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    server.close();
+    await runs.shutdown();
+    process.exit(0);
+  });
+}
 server.listen(port, '127.0.0.1', () => console.log(`Signal Room: http://127.0.0.1:${port}`));

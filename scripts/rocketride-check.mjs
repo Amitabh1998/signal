@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -15,6 +16,21 @@ async function loadDotEnv(filepath) {
     }
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+// The published engine image is amd64-only; on an Apple Silicon host it runs
+// under emulation, which is slow. Detect that for the Docker Compose engine.
+function emulatedEngine() {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') return null;
+  try {
+    const image = execFileSync('docker', ['compose', '-f', 'docker-compose.rocketride.yml', 'images', '--format', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const id = JSON.parse(image.trim().split('\n')[0] || '[]')?.[0]?.ID ?? JSON.parse(image.trim().split('\n')[0] || '{}')?.ID;
+    if (!id) return null;
+    const arch = execFileSync('docker', ['image', 'inspect', id, '--format', '{{.Architecture}}'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return arch === 'amd64' ? 'the Docker engine is an amd64 image running under emulation on Apple Silicon. The native darwin-arm64 RocketRide server is much faster.' : null;
+  } catch {
+    return null;
   }
 }
 
@@ -75,6 +91,8 @@ try {
   console.log(`Engine: reachable and authenticated at ${uri} (${latencyMs} ms)`);
   console.log(`Pipelines: all valid (${warnings} warning(s))`);
   console.log(`Last report: ${lastReport.valid ? 'valid' : 'not available or invalid'}`);
+  const emulation = emulatedEngine();
+  if (emulation) console.log(`Warning: ${emulation}`);
 } catch (error) {
   const health = {
     schemaVersion: 1,

@@ -200,7 +200,7 @@ function createBuildMission(event) {
 }
 
 const executionPhaseOrder = ['preflight', 'implementing', 'testing', 'delivery-review', 'opening-pr'];
-const executionPhaseIndex = { 'delivery-review-failed': 3, 'review-ready': 4, complete: 5 };
+const executionPhaseIndex = { setup: 0, 'delivery-review-failed': 3, 'review-ready': 4, complete: 5 };
 
 function setExecutionState(execution) {
   const status = execution?.status || 'disabled';
@@ -216,23 +216,27 @@ function setExecutionState(execution) {
     'opening-pr': 'Opening pull request',
     complete: 'Ready for human review',
     failed: 'Execution failed',
+    cancelled: 'Implementation run cancelled',
+    interrupted: 'The Signal server stopped before this run finished',
+    setup: 'Installing dependencies',
     disabled: 'Execution is disabled until a trusted repository is configured.'
   };
   // The furthest phase this run reached, so a failure keeps completed stages visible.
   const reached = Math.max(-1, ...(execution?.logs || []).map(event => executionPhaseIndex[event.phase] ?? executionPhaseOrder.indexOf(event.phase)));
-  const current = status === 'failed' ? reached : executionPhaseIndex[status] ?? executionPhaseOrder.indexOf(status);
+  const stopped = ['failed', 'cancelled', 'interrupted'].includes(status);
+  const current = stopped ? reached : executionPhaseIndex[status] ?? executionPhaseOrder.indexOf(status);
   $('#executionState').textContent = execution?.detail || phaseCopy[status] || status;
   $('#executionPr').textContent = execution?.prUrl
     ? 'Ready for review'
     : execution?.reviewBranch || (status === 'opening-pr' ? 'Creating' : 'Not created');
-  $('#executionTests').textContent = current > 2 ? 'Passed' : status === 'failed' && reached === 2 ? 'Failed' : 'Tests + build';
+  $('#executionTests').textContent = current > 2 ? 'Passed' : stopped && reached === 2 ? 'Failed' : 'Tests + build';
   document.querySelectorAll('.mission-stages li').forEach((stage, index) => {
     stage.classList.toggle('prepared', index === 0 || (index === 1 && current >= 1) || (index === 2 && current > 2) || (index === 3 && status === 'complete'));
   });
   document.querySelectorAll('[data-execution-phase]').forEach((item, index) => {
     item.classList.toggle('complete', status === 'complete' || index < current);
-    item.classList.toggle('active', index === current && !['complete', 'failed'].includes(status));
-    item.classList.toggle('failed', status === 'failed' && index === current);
+    item.classList.toggle('active', index === current && status !== 'complete' && !stopped);
+    item.classList.toggle('failed', stopped && index === current);
   });
   renderDeliveryReview(execution?.deliveryReview);
 }
@@ -331,23 +335,44 @@ async function prepareExecutionStatus() {
   }
 }
 
+let activeExecutionId;
+
+function failureCopy(execution) {
+  const failure = execution.failure;
+  if (!failure) return execution.detail;
+  const kept = failure.localBranch ? ` Work kept on local branch ${failure.localBranch} (not pushed).` : '';
+  const where = failure.artifacts ? ` Logs and patch: ${failure.artifacts.replace(/^.*\/(data\/runs\/)/, '$1')}/` : '';
+  return `${describeRunError(failure)}${kept}${where}`;
+}
+
 async function pollExecution(id) {
   clearInterval(executionPoll);
+  activeExecutionId = id;
+  $('#cancelExecutionButton').hidden = false;
+  let misses = 0;
+  const finish = () => {
+    clearInterval(executionPoll);
+    activeExecutionId = undefined;
+    $('#cancelExecutionButton').hidden = true;
+    $('#dispatchExecutionButton').disabled = false;
+  };
   const poll = async () => {
     try {
       const response = await fetch(`/api/executions/${id}`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Could not read execution status.');
+      misses = 0;
       setExecutionState(payload.execution);
-      if (['complete', 'failed'].includes(payload.execution.status)) {
-        clearInterval(executionPoll);
-        $('#dispatchExecutionButton').disabled = false;
+      if (terminalRunStatuses.has(payload.execution.status)) {
+        finish();
         if (payload.execution.prUrl) $('#executionState').innerHTML = `Pull request ready: <a href="${escapeHtml(payload.execution.prUrl)}" target="_blank" rel="noreferrer">open review</a>`;
+        else if (payload.execution.status !== 'complete') $('#executionState').textContent = failureCopy(payload.execution);
       }
     } catch (error) {
-      clearInterval(executionPoll);
-      $('#executionState').textContent = error.message;
-      $('#dispatchExecutionButton').disabled = false;
+      misses += 1;
+      if (misses < 5) return;
+      finish();
+      $('#executionState').textContent = describeRunError({ code: 'server-unreachable' });
     }
   };
   await poll();
@@ -369,11 +394,16 @@ async function dispatchExecution() {
       body: JSON.stringify({ mission: currentMission })
     });
     const payload = await response.json();
-    if (!response.ok || !payload.ok) throw new Error(payload.message || payload.message || 'Could not start implementation.');
+    if (response.status === 409 && payload.code === 'run-active') {
+      showToast(payload.message, 6000);
+      pollExecution(payload.activeRunId);
+      return;
+    }
+    if (!response.ok || !payload.ok) throw Object.assign(new Error(payload.message || 'Could not start implementation.'), { code: payload.code });
     showToast('Implementation run started. Signal will report test and pull-request status here.', 6000);
     pollExecution(payload.execution.id);
   } catch (error) {
-    $('#executionState').textContent = error.message;
+    $('#executionState').textContent = describeRunError({ code: error.code, message: error.message });
     button.disabled = false;
   }
 }
@@ -984,27 +1014,28 @@ async function prepareLocalLiveReport() {
   }
 }
 
+// Live engine health from the server, refreshed while the page is open.
+// Never shown during a scope run, which reports its own state.
 async function prepareRocketRideHealth() {
+  if (activeScopeRunId) return;
   const status = $('#engineStatus');
   try {
-    const response = await fetch(`./data/rocketride-health.json?cache=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return;
-    const health = await response.json();
-    const checked = new Date(health.checkedAt);
-    const ageMs = Date.now() - checked.getTime();
-    const fresh = Number.isFinite(ageMs) && ageMs < 5 * 60 * 1000;
-    status.className = `engine-status ${health.ok ? fresh ? 'healthy' : 'stale' : 'failed'}`;
-    status.querySelector('strong').textContent = health.ok
-      ? fresh ? 'RocketRide engine and pipeline verified' : 'RocketRide passed its last check'
-      : 'RocketRide health check failed';
-    status.querySelector('span').textContent = health.ok
-      ? `Authenticated ping ${health.latencyMs} ms · ${health.pipeline} · ${health.validation.errors} validation errors`
-      : health.message;
-    status.querySelector('code').textContent = health.ok
-      ? `${fresh ? 'checked' : 'last checked'} ${checked.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : 'attention needed';
+    const { engine, checkedAt } = await fetch('/api/health', { cache: 'no-store' }).then(response => response.json());
+    if (activeScopeRunId) return;
+    const pipelineCount = (engine.pipelines || []).length;
+    status.className = `engine-status ${engine.ok ? 'healthy' : 'failed'}`;
+    status.querySelector('strong').textContent = engine.ok ? 'RocketRide engine and pipelines verified' : engine.code === 'pipeline-invalid' ? 'A RocketRide pipeline failed validation' : 'RocketRide engine is not reachable';
+    status.querySelector('span').textContent = engine.ok
+      ? `Authenticated ping ${engine.latencyMs} ms · ${pipelineCount} pipelines valid · ${engine.uri}`
+      : `${describeRunError({ code: engine.code, message: engine.message })} ${engine.hint || ''}`.trim();
+    status.querySelector('code').textContent = engine.ok
+      ? `checked ${new Date(checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+      : engine.code;
   } catch {
-    // Absence means "not checked," never "healthy."
+    status.className = 'engine-status failed';
+    status.querySelector('strong').textContent = 'Signal server is not reachable';
+    status.querySelector('span').textContent = describeRunError({ code: 'server-unreachable' });
+    status.querySelector('code').textContent = 'server-unreachable';
   }
 }
 
@@ -1171,50 +1202,84 @@ async function analyzeSelectedScenario() {
   await replayAnalysis();
 }
 
-let liveFlowPoll;
-const liveFlowOrder = ['Parse evidence', 'Customer advocate', 'Skeptic', 'Product strategist', 'Promise judge', 'Decision synthesis', 'Enforce report contract'];
+// Typed error codes from the server and the runners, mapped to the next step.
+const runErrorCopy = {
+  'engine-offline': 'RocketRide is not reachable. Start the engine, then run the workflow again.',
+  'pipeline-invalid': 'A RocketRide pipeline failed validation. Run npm run rocketride:check for details.',
+  'workflow-failed': 'The RocketRide workflow stopped before producing a report.',
+  'runner-signed-out': 'The coding agent is not signed in. Open Connections to sign in.',
+  'runner-missing': 'The coding agent CLI is not installed on this machine.',
+  'execution-disabled': 'Repository execution is disabled on this server.',
+  'stage-timeout': 'A stage ran past its time limit and was stopped.',
+  'agent-budget': 'The coding agent reached its spending cap (SIGNAL_AGENT_BUDGET_USD).',
+  'agent-failed': 'The coding agent stopped with an error.',
+  'no-changes': 'The coding agent finished without changing any files.',
+  'review-failed': 'The required RocketRide delivery review failed, so nothing was pushed.',
+  'command-failed': 'A repository command failed.',
+  cancelled: 'The run was cancelled.',
+  interrupted: 'The Signal server stopped before this run finished.',
+  'server-unreachable': 'Lost the connection to the local Signal server. Restart it with npm run dev.'
+};
 
-// The server relays the first flow event of each step; the step that started
-// last is the one the engine is working on, and earlier steps have finished.
-function renderLiveFlow(progress) {
-  const started = new Set((progress.steps || []).map(item => item.step));
+function describeRunError({ code, message } = {}) {
+  const copy = runErrorCopy[code];
+  if (!copy) return message || 'The run failed.';
+  return message && !['cancelled', 'interrupted'].includes(code) ? `${copy} ${message}` : copy;
+}
+
+const terminalRunStatuses = new Set(['complete', 'failed', 'cancelled', 'interrupted']);
+const liveFlowOrder = ['Parse evidence', 'Customer advocate', 'Skeptic', 'Product strategist', 'Promise judge', 'Decision synthesis', 'Enforce report contract'];
+let activeScopeRunId;
+
+// The run record lists the first flow event of each step; the step that
+// started last is the one the engine is working on.
+function renderLiveFlow(run) {
+  const started = new Set((run.progress?.steps || []).map(item => item.step));
   const current = liveFlowOrder.filter(step => started.has(step)).at(-1);
-  const finished = progress.status === 'complete';
+  const finished = run.status === 'complete';
+  const stopped = ['failed', 'cancelled', 'interrupted'].includes(run.status);
   document.querySelectorAll('[data-flow-step]').forEach(node => {
     const step = node.dataset.flowStep;
     node.classList.toggle('done', finished || (started.has(step) && step !== current));
     node.classList.toggle('active', !finished && step === current);
   });
-  $('#liveFlow').classList.toggle('failed', progress.status === 'failed');
+  $('#liveFlow').classList.toggle('failed', stopped);
+  $('#cancelScopeButton').hidden = finished || stopped;
   $('#liveFlowState').textContent = finished
     ? 'Scope report ready for human review'
-    : progress.status === 'failed'
-      ? `Stopped${current ? ` during ${current.toLowerCase()}` : ''}`
+    : stopped
+      ? `${run.status === 'cancelled' ? 'Cancelled' : 'Stopped'}${current ? ` during ${current.toLowerCase()}` : ''}`
       : current ? `RocketRide is running: ${current.toLowerCase()}` : 'Waiting for the engine';
 }
 
 function startLiveFlow() {
   const formats = [...new Set(stagedEvidenceFiles.map(file => String(file.name).split('.').pop().toUpperCase()))];
   $('#liveFlowFormats').textContent = formats.length ? `+ ${formats.join(' · ')}` : 'text';
-  renderLiveFlow({ status: 'running', steps: [] });
+  renderLiveFlow({ status: 'running', progress: { steps: [] } });
   $('#liveFlow').hidden = false;
-  clearInterval(liveFlowPoll);
-  liveFlowPoll = setInterval(async () => {
-    try {
-      const progress = await fetch('/api/scope-progress', { cache: 'no-store' }).then(response => response.json());
-      if (progress.status === 'running') renderLiveFlow(progress);
-    } catch { /* The final state is set when the run returns. */ }
-  }, 700);
 }
 
-async function stopLiveFlow(status) {
-  clearInterval(liveFlowPoll);
-  try {
-    const progress = await fetch('/api/scope-progress', { cache: 'no-store' }).then(response => response.json());
-    renderLiveFlow({ ...progress, status });
-  } catch {
-    renderLiveFlow({ status, steps: [] });
+// Scope runs are owned by the server; the browser only watches the run record.
+async function watchRun(runId, onUpdate) {
+  let misses = 0;
+  for (;;) {
+    try {
+      const { run } = await fetch(`/api/runs/${encodeURIComponent(runId)}`, { cache: 'no-store' }).then(response => response.json());
+      misses = 0;
+      onUpdate(run);
+      if (terminalRunStatuses.has(run.status)) return run;
+    } catch {
+      misses += 1;
+      if (misses >= 5) throw Object.assign(new Error('The Signal server stopped answering.'), { code: 'server-unreachable' });
+    }
+    await new Promise(resolveWait => setTimeout(resolveWait, 800));
   }
+}
+
+async function cancelRun(runId) {
+  if (!runId) return;
+  const payload = await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' }).then(response => response.json()).catch(() => ({}));
+  showToast(payload.ok ? 'Cancelling: Signal is stopping the run and its processes.' : payload.message || 'That run is no longer running.');
 }
 
 async function runLiveAnalysis(event) {
@@ -1233,7 +1298,7 @@ async function runLiveAnalysis(event) {
   setScopeRunNotice('RocketRide is reading the request and context. The scope report will open when it is ready.', 'running');
   $('#engineStatus').className = 'engine-status stale';
   $('#engineStatus strong').textContent = 'RocketRide live run in progress';
-  $('#engineStatus span').textContent = 'The browser is calling the local dev server, which calls the RocketRide runner.';
+  $('#engineStatus span').textContent = 'The Signal server is running the RocketRide workflow; this page is watching its progress.';
   $('#engineStatus code').textContent = 'running';
   setFactoryRoleState('running');
   renderPipeline(rocketRidePipeline, 'running');
@@ -1247,21 +1312,26 @@ async function runLiveAnalysis(event) {
       body: JSON.stringify(input)
     });
     const payload = await response.json();
-    if (response.status === 409 && payload.code === 'scope-workflow-running') {
-      throw new Error(payload.message);
+    if (response.status === 409 && payload.code === 'run-active') {
+      // Another tab or click already started a scope run: watch that one.
+      activeScopeRunId = payload.activeRunId;
+      showToast(payload.message);
+    } else if (!response.ok || !payload.ok) {
+      throw Object.assign(new Error(payload.message || 'RocketRide run failed.'), { code: payload.code });
+    } else {
+      activeScopeRunId = payload.runId;
     }
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.stderr || payload.message || 'RocketRide run failed.');
-    }
-    const report = normalizeReport(payload.report);
-    report.mode = payload.report.mode === 'live' ? 'live' : 'imported';
-    report.provenance = payload.report.provenance;
-    currentRunId = payload.runId;
+    const run = await watchRun(activeScopeRunId, renderLiveFlow);
+    if (run.status !== 'complete') throw Object.assign(new Error(run.error?.message || ''), { code: run.error?.code || run.status });
+    const report = normalizeReport(run.report);
+    report.mode = run.report.mode === 'live' ? 'live' : 'imported';
+    report.provenance = run.report.provenance;
+    currentRunId = run.id;
     renderReport(report);
     currentMission = {
-      title: missionTitleFromRequest(brief),
-      brief,
-      runId: payload.runId
+      title: missionTitleFromRequest(run.brief || brief),
+      brief: run.brief || brief,
+      runId: run.id
     };
     scopeReportReady = report.mode === 'live';
     $('#loadLiveButton').hidden = true;
@@ -1274,26 +1344,22 @@ async function runLiveAnalysis(event) {
     setFactoryRoleState('complete');
     setProofMode(true);
     setScopeRunNotice('Scope report ready. Opening the decision for review.', 'complete');
-    await stopLiveFlow('complete');
     void prepareLiveDecisions();
     showToast('RocketRide live run complete. Proof Mode is showing the claims tied to evidence.');
   } catch (error) {
-    const technicalMessage = error instanceof Error ? error.message : 'The RocketRide scope run failed.';
-    const message = /Failed to connect to ws:\/\/localhost:5565/i.test(technicalMessage)
-      ? 'RocketRide is offline on this Mac. Start the local engine, then run the workflow again.'
-      : error instanceof TypeError && /fetch|network|load failed/i.test(technicalMessage)
-        ? 'Lost the connection to the local Signal server. Restart it with npm run dev, then run the workflow again.'
-        : technicalMessage;
+    const code = error.code || (error instanceof TypeError ? 'server-unreachable' : undefined);
+    const message = describeRunError({ code, message: error.message });
     renderPipeline(currentReport.mode === 'live' ? rocketRidePipeline : currentReport.pipeline, 'done');
     $('#engineStatus').className = 'engine-status failed';
-    $('#engineStatus strong').textContent = 'RocketRide live run failed';
+    $('#engineStatus strong').textContent = code === 'cancelled' ? 'Scope run cancelled' : 'RocketRide live run failed';
     $('#engineStatus span').textContent = message;
-    $('#engineStatus code').textContent = 'failed';
+    $('#engineStatus code').textContent = code || 'failed';
     setFactoryRoleState('failed');
     setScopeRunNotice(`The scope run stopped: ${message}`, 'failed');
-    await stopLiveFlow('failed');
+    renderLiveFlow({ status: code === 'cancelled' ? 'cancelled' : 'failed', progress: { steps: [] } });
     showToast(message, 8000);
   } finally {
+    activeScopeRunId = undefined;
     button.disabled = false;
     button.innerHTML = previous;
   }
@@ -1392,8 +1458,11 @@ setProofMode(true);
 prepareLocalLiveReport();
 prepareLiveDecisions();
 prepareRocketRideHealth();
+setInterval(prepareRocketRideHealth, 30_000);
 
 $('#factoryGenerateButton').addEventListener('click', runLiveAnalysis);
+$('#cancelScopeButton').addEventListener('click', () => cancelRun(activeScopeRunId));
+$('#cancelExecutionButton').addEventListener('click', () => cancelRun(activeExecutionId));
 $('#factoryIdeaInput').addEventListener('input', syncScopeAction);
 $('#scopeWithRocketRide').addEventListener('click', runLiveAnalysis);
 $('#createMissionReviewButton').addEventListener('click', createBuildMission);

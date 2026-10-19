@@ -211,21 +211,25 @@ SIGNAL_EXECUTION_PR_MODE=github      # or local: push a review branch, no PR
 
 SIGNAL_DELIVERY_REVIEW_ENABLED=1     # run the RocketRide delivery review
 SIGNAL_DELIVERY_REVIEW_REQUIRED=0    # set to 1 to block the PR if the review fails
+
+SIGNAL_AGENT_BUDGET_USD=2            # Claude Code spending cap per run
+SIGNAL_EXECUTION_SETUP=              # override the dependency install ("none" to skip)
 ```
 
 When you click **Run implementation**, the runner:
 
 1. fetches the configured base branch and creates a temporary worktree on a new `signal/<run-id>` branch,
-2. runs the coding agent with the approved mission:
+2. installs dependencies from the committed lockfile (`npm ci`, pnpm, yarn, or bun),
+3. runs the coding agent with the approved mission:
    - **Claude Code** (default) runs headless with edits auto-accepted inside the worktree and shell access limited to `npm test`, `npm run build`, and read-only git,
    - **Codex CLI** runs with workspace-write access to the worktree,
-3. runs `npm test` and `npm run build` if the repository defines them,
-4. commits the change locally,
-5. optionally runs the RocketRide delivery review, whose agent reads that commit with read-only git tools,
-6. pushes the reviewed commit only after the review, then opens a pull request with **GitHub CLI** with the review in the PR body (in `local` mode it stops at the pushed review branch),
-7. removes the temporary worktree.
+4. runs the repository's `test` and `build` scripts if it defines them,
+5. commits the change locally,
+6. optionally runs the RocketRide delivery review, whose agent reads that commit with read-only git tools,
+7. pushes the reviewed commit only after the review, then opens a pull request with **GitHub CLI** with the review in the PR body (in `local` mode it stops at the pushed review branch),
+8. removes the temporary worktree.
 
-You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mode. Follow progress under **Builds**. Each run is saved under `data/runs/`, and a run interrupted by a server restart is marked as failed rather than left hanging.
+You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mode. Follow progress under **Builds**. Each run is saved under `data/runs/` with its own folder of inputs, logs, patch, and review. A failed run keeps its work on an unpushed local branch, and a run interrupted by a server restart is marked `interrupted` and its processes are stopped. Only one scope run and one build per repository run at a time; a second click attaches to the active run, and **Cancel** stops it.
 
 > [!TIP]
 > To try the full build loop without touching a real repository, run `npm run demo:target`. It creates a small demo app with a local bare Git remote under `.context/` and prints the `SIGNAL_EXECUTION_*` values to use. Set `SIGNAL_EXECUTION_PR_MODE=local`, since a local remote can't host a pull request.
@@ -234,11 +238,12 @@ You'll need an authenticated `claude` (or `codex`) CLI, plus `gh` for GitHub mod
 
 ```text
 Browser UI (index.html, src/)              Node server (scripts/serve.mjs, 127.0.0.1 only)
- ├─ work order + staged evidence    ──►     ├─ POST /api/analyze          → rocketride-run.mjs → evidence-parse.pipe → signal-room.pipe
- ├─ live scope graph                        ├─ GET  /api/scope-progress   → steps the engine has started (flow events)
+ ├─ work order + staged evidence    ──►     ├─ POST /api/analyze          → 202 + run id; run-manager → evidence-parse.pipe → signal-room.pipe
+ ├─ live scope graph                        ├─ GET  /api/health           → live engine, pipeline, runner, and repo checks
  ├─ decisions (completed live runs)         ├─ GET  /api/decisions        → completed live scope runs
  ├─ decision · proof · ledger · map         ├─ POST /api/execute          → signal-execute.mjs → Claude Code / Codex · git · gh
- ├─ engine trace + timeline                 ├─ GET  /api/runs/:id         → saved run records (data/runs/)
+ ├─ engine trace + timeline                 ├─ GET  /api/runs/:id         → run record: status, progress, report, errors
+                                            ├─ POST /api/runs/:id/cancel  → stop a run and its process tree
  └─ build mission + build status    ◄──     ├─ GET  /api/executions/:id   → live build progress
                                             ├─ GET  /api/execution-status
                                             ├─ GET  /api/runners
@@ -288,6 +293,8 @@ Signal treats each specialist as an agent that can only promise its own behavior
 | `npm run sources:demo` | Generate a realistic multi-format source pack |
 | `npm run demo:target` | Create an isolated demo repository and local remote for trying builds |
 | `npm run demo:record` | Record an end-to-end walkthrough video (macOS + Chrome) |
+| `npm run verify:e2e` | Drive the real UI end to end in headless Chrome against a running server and engine (`-- --skip-build` stops after the scope run) |
+| `npm run runs:prune` | Delete run records, artifacts, and kept branches beyond the newest `SIGNAL_RUNS_KEEP` (default 30) |
 
 ### Trust checks
 
@@ -343,11 +350,12 @@ TXT, Markdown, JSON, JSONL, CSV, and XLSX. Each spreadsheet sheet is converted t
 
 ## Safety and current limits
 
-- **Localhost only.** The server binds to `127.0.0.1`. Don't expose it to an untrusted network, especially with execution enabled.
+- **Localhost only.** The server binds to `127.0.0.1`, rejects requests whose `Host` isn't its own (DNS rebinding), and serves only the app and public demo data, never `.env`, `.git`, or run records. Don't expose it to an untrusted network, especially with execution enabled.
 - **One trusted repository.** Execution is off by default and scoped to the single repository you configure. Passing tests don't replace code review.
 - **Advisory review.** The delivery review informs the human reviewer. It never approves a release.
-- **Local artifacts.** Live outputs such as `data/live-report.json`, run records in `data/runs/`, and rendered recordings are gitignored.
-- **Engine runs separately.** Start it with Docker (`npm run rocketride:up`) or point Signal at your own RocketRide server or Cloud endpoint.
+- **Local artifacts.** Live outputs such as `data/live-report.json`, run records and per-run folders in `data/runs/`, and rendered recordings are gitignored.
+- **Bounded coding runs.** Each stage has a time limit (`SIGNAL_TIMEOUT_*`), Claude Code runs with a spending cap (`SIGNAL_AGENT_BUDGET_USD`, default $2) and without your user-level MCP servers, hooks, or plugins, and Cancel stops a run's whole process tree.
+- **Engine runs separately.** Start it with Docker (`npm run rocketride:up`) or point Signal at your own RocketRide server or Cloud endpoint. The published image is amd64-only, so on Apple Silicon prefer the native RocketRide server; `rocketride:check` warns when the Docker engine runs under emulation.
 
 ## Contributing
 

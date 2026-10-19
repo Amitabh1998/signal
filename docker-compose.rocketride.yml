@@ -1,7 +1,9 @@
 services:
   rocketride:
     image: ghcr.io/rocketride-org/rocketride-engine:latest
-    platform: linux/amd64
+    # The published image is amd64-only; on Apple Silicon it runs under emulation.
+    # Prefer the native RocketRide server there, or set ROCKETRIDE_PLATFORM.
+    platform: ${ROCKETRIDE_PLATFORM:-linux/amd64}
     ports:
       - "127.0.0.1:5565:5565"
     environment:

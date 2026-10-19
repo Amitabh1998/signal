@@ -59,6 +59,24 @@ test('original evidence sections are preserved without including the task prompt
   assert.doesNotMatch(attached[1].content, /Make a decision/);
 });
 
+test('model-named sources are matched to the file they came from, never by position', () => {
+  const evidence = [
+    'SOURCE: 04-support-tickets.jsonl\n{"id":"TCK-1845","evidence":"Security committee asked for retention."}',
+    'SOURCE: 01-customer-call-nadia-finlytics.md\nThe issue is whether I can approve broader rollout.',
+    'SOURCE: 05-enterprise-pipeline.xlsx\nOPP-901\tFinlytics'
+  ].join('\n\n');
+  const attached = attachEvidenceContent([
+    { id: 'TCK-1845', name: 'HelioBank Security Ticket' },
+    { id: '01-customer-call-nadia-finlytics.md', name: 'Customer Call Transcript: Nadia' },
+    { id: 'pipeline', name: 'Enterprise Pipeline' },
+    { id: 'unknown', name: 'Board deck' }
+  ], evidence);
+  assert.match(attached[0].content, /TCK-1845/);
+  assert.match(attached[1].content, /approve broader rollout/);
+  assert.match(attached[2].content, /OPP-901/);
+  assert.deepEqual([attached[3].content, attached[3].contentStatus], ['', 'metadata']);
+});
+
 test('pipeline has real parallel specialists and no embedded credentials', async () => {
   const raw = await readFile(new URL('../pipelines/signal-room.pipe', import.meta.url), 'utf8');
   const pipeline = JSON.parse(raw);
@@ -98,18 +116,17 @@ test('delivery review is a separate RocketRide workflow with bounded reviewer ro
   assert.doesNotMatch(raw, /sk-[A-Za-z0-9]/);
 });
 
-test('execution ships a real tested patch instead of a simulated delivery summary', async () => {
+// Behaviour (setup, gates, push, PR, failure, timeout, cancel) is covered in executor.test.js.
+test('execution reviews the committed patch before anything is pushed', async () => {
   const execution = await readFile(new URL('../scripts/signal-execute.mjs', import.meta.url), 'utf8');
   assert.match(execution, /commitRange: \{ base: baseCommit, head \}/);
   assert.match(execution, /repoPath: worktree/);
-  // The reviewed commit reaches the remote only after the delivery review.
   const review = execution.indexOf('scripts/rocketride-delivery-review.mjs');
-  assert.ok(review > 0 && review < execution.indexOf("run('git', ['push'"));
-  assert.match(execution, /qualityGates\.push\(\{ name: 'npm test', status: 'passed', output:/);
-  assert.match(execution, /qualityGates\.push\(\{ name: 'npm run build', status: 'passed', output:/);
-  assert.match(execution, /run\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
+  assert.ok(review > 0 && review < execution.indexOf("await git(worktree, 'push'"));
   assert.match(execution, /'--permission-mode', 'acceptEdits'/);
-  assert.match(execution, /SIGNAL_EXECUTION_PR_MODE/);
+  assert.match(execution, /'--strict-mcp-config'/);
+  assert.match(execution, /'--max-budget-usd', String\(agentBudget\)/);
+  assert.match(execution, /exec\('codex', \['exec', '-C', worktree, '-s', 'workspace-write', '--ephemeral'/);
   assert.doesNotMatch(execution, /'-a', 'never'/);
 });
 
@@ -145,7 +162,7 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /analyzeSelectedScenario/);
   assert.match(app, /runLiveAnalysis/);
   assert.match(app, /renderProofs/);
-  assert.match(app, /Absence means "not checked," never "healthy/);
+  assert.match(app, /fetch\('\/api\/health'/);
   assert.match(app, /get\('tour'\) === '1'/);
   assert.match(app, /never calls a model/);
   assert.match(app, /refreshConnections/);
@@ -158,12 +175,13 @@ test('the local UI exposes an honest guided tour and saved-live-run loader', asy
   assert.match(app, /handleFileSelection/);
   assert.match(app, /syncScopeAction/);
   assert.match(app, /setScopeRunNotice/);
-  assert.match(app, /RocketRide is offline on this Mac/);
+  assert.match(app, /'engine-offline': 'RocketRide is not reachable/);
   assert.match(app, /acceptanceCriteria/);
-  assert.match(app, /scope-workflow-running/);
+  // A second click attaches to the active run instead of starting another.
+  assert.match(app, /payload\.code === 'run-active'/);
   const server = await readFile(new URL('../scripts/serve.mjs', import.meta.url), 'utf8');
-  assert.match(server, /scopeWorkflowRunning/);
-  assert.match(server, /scope-workflow-running/);
+  assert.match(server, /runs\.startScope/);
+  assert.match(server, /allowedHosts\.has/);
   assert.doesNotMatch(app, /\$\('\.momentum-score strong'\)/);
 });
 

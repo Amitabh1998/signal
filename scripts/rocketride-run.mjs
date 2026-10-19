@@ -105,6 +105,18 @@ function engineTrace(parseSummary, scopeSummary) {
 }
 
 const tokens = [];
+// Cancel and shutdown arrive as SIGTERM. Terminate this run's engine tasks
+// first, or RocketRide keeps executing an abandoned pipeline.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, async () => {
+    await Promise.race([
+      Promise.all(tokens.map(token => client.terminate(token).catch(() => {}))),
+      new Promise(resolveWait => setTimeout(resolveWait, 3000))
+    ]);
+    try { await client.disconnect(); } catch { /* Exiting anyway. */ }
+    process.exit(130);
+  });
+}
 try {
   console.log(`Connecting to RocketRide at ${uri}…`);
   await client.connect();
@@ -158,8 +170,12 @@ try {
   console.log(`Live RocketRide report written to ${outputPath}`);
   console.log('Import that JSON from the Signal Room UI.');
 } catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  // A typed error line lets the server report the failure without parsing prose.
+  const code = /failed to connect|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|socket hang up|websocket/i.test(message) ? 'engine-offline' : 'workflow-failed';
+  process.stdout.write(`${JSON.stringify({ type: 'signal-error', code, message: message.slice(0, 2000) })}\n`);
   console.error('\nNo report was generated. Signal Room will not substitute demo output for a failed live run.');
-  console.error(`RocketRide error: ${error instanceof Error ? error.message : String(error)}`);
+  console.error(`RocketRide error: ${message}`);
   console.error('Check that the engine is reachable and that ROCKETRIDE_OPENROUTER_KEY is available to the engine.');
   process.exitCode = 1;
 } finally {

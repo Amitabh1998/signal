@@ -88,7 +88,12 @@ if (!repoPath || !commitRange?.base || !commitRange?.head) throw new Error('The 
 const git = (...gitArgs) => execFileSync('git', ['-C', repoPath, ...gitArgs], { encoding: 'utf8', maxBuffer: 20_000_000 });
 // Signal's own reading of the same commit: line-numbered for citations, and
 // the stats the agent's read-only git.diff result must match.
-const patch = git('diff', '--no-ext-diff', '--unified=40', commitRange.base, commitRange.head);
+// Generated and vendored files are left out of what reviewers cite and what
+// Signal verifies; override with a comma-separated SIGNAL_REVIEW_IGNORE.
+const reviewIgnore = (process.env.SIGNAL_REVIEW_IGNORE ?? 'dist/,build/,coverage/,node_modules/,*.min.js,*.map,package-lock.json,pnpm-lock.yaml,yarn.lock,bun.lock,bun.lockb')
+  .split(',').map(entry => entry.trim()).filter(Boolean)
+  .map(entry => `:(exclude,glob)${entry.endsWith('/') ? `${entry}**` : entry.includes('/') ? entry : `**/${entry}`}`);
+const patch = git('diff', '--no-ext-diff', '--unified=40', commitRange.base, commitRange.head, '--', '.', ...reviewIgnore);
 const { numbered, lines: diffLines } = numberDiff(patch);
 const [, filesChanged = '0', insertions = '0', deletions = '0'] = git('diff', '--shortstat', commitRange.base, commitRange.head)
   .match(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/) || [];
@@ -136,6 +141,14 @@ function agentEvidence() {
 }
 
 let token;
+// Cancel and timeouts arrive as SIGTERM: stop the engine task before exiting.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, async () => {
+    if (token) await Promise.race([client.terminate(token).catch(() => {}), new Promise(resolveWait => setTimeout(resolveWait, 3000))]);
+    try { await client.disconnect(); } catch { /* Exiting anyway. */ }
+    process.exit(130);
+  });
+}
 try {
   console.log(`Connecting to RocketRide at ${uri}…`);
   await client.connect();

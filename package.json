@@ -18,12 +18,17 @@
     "rocketride:up": "docker compose -f docker-compose.rocketride.yml up -d",
     "rocketride:down": "docker compose -f docker-compose.rocketride.yml down",
     "rocketride:logs": "docker compose -f docker-compose.rocketride.yml logs -f rocketride",
-    "rocketride:check": "node scripts/rocketride-check.mjs"
+    "rocketride:check": "node scripts/rocketride-check.mjs",
+    "runs:prune": "node scripts/runs-prune.mjs",
+    "verify:e2e": "node scripts/verify-e2e.mjs"
   },
   "dependencies": {
     "rocketride": "1.4.0"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
   }
 }

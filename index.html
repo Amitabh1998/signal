@@ -78,6 +78,7 @@
                   <strong>RocketRide scope workflow</strong>
                   <span class="live-badge">Live run</span>
                   <span id="liveFlowState">Waiting for the engine</span>
+                  <button class="button button-ghost" id="cancelScopeButton" type="button" hidden>Cancel</button>
                 </div>
                 <div class="live-flow-graph">
                   <div class="flow-col"><div class="flow-node done" data-flow-node="request"><b>Request</b><small id="liveFlowFormats">text</small></div></div>
@@ -180,6 +181,7 @@
               </dl>
               <div class="execution-action">
                 <button class="button button-primary" id="dispatchExecutionButton" type="button" disabled><span>▶</span> Run implementation</button>
+                <button class="button button-ghost" id="cancelExecutionButton" type="button" hidden>Cancel run</button>
                 <span id="executionState">Execution is disabled until a trusted repository is configured.</span>
               </div>
               <ol class="execution-timeline" aria-label="Implementation run progress">
